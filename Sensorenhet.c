@@ -84,17 +84,19 @@ void triggerSignal(){
 	PORTA &= ~_BV(PA2);
 }
 
-void readTapeSensor(uint8_t num){
-	if (ADCH < tapeThreshold)
+void readTapeSensor(){
+	for (uint8_t tapeNum = 0; tapeNum>4; tapeNum++)
 	{
-		TapeValues |= _BV(num);
-		//TapeValues[num] = 1;
-	}
-	else{
-		TapeValues &= ~_BV(num);
-		//TapeValues[num] = 0;
-	}
-	
+		if (ADCH < tapeThreshold)
+		{
+			TapeValues |= _BV(33+tapeNum);
+			//TapeValues[num] = 1;
+		}
+		else{
+			TapeValues &= ~_BV(33+tapeNum);
+			//TapeValues[num] = 0;
+		}
+	}	
 }
 
 void readIRSensor(uint8_t num){//FUNKARINTEFÖRHENKEÄRENSNOPDANKWEEDSHITPOJKESOMGILLARANUSPAJ
@@ -106,12 +108,12 @@ void readIRSensor(uint8_t num){//FUNKARINTEFÖRHENKEÄRENSNOPDANKWEEDSHITPOJKESOMG
 		
     while(!IRSTOPFLAG) // Count up while 1
     {
-		if (!(PINA & (1<<PA4))) // if 0
+		if (!(PINA & (1<<PA3))) // if 0
 		{
 			TCNT0 = 0;
 			while (!IRSTOPFLAG) // Count up while 0
 			{
-				if (PINA & (1<<PA4)) // if 1
+				if (PINA & (1<<PA3)) // if 1
 				{
 					
 					if (TCNT0 >= 120 && state == 0) //40k, 160
@@ -156,9 +158,6 @@ void readSensors(uint8_t PBx){
 	    if(PBx == PB2){
 			readIRSensor(num);
 		}
-		else if(PBx == PB3){
-			readTapeSensor(num);
-		}
     }
 	PORTB |= _BV(PBx);	//disable mux x
 }
@@ -184,12 +183,11 @@ int main(void)
 	//DDRD |= _BV(PD0) | _BV(PD1);
 	//PB0 && PB1 = styrsignaler 0=>0, 1=>1
 	//PB2 = 0 => enable IR
-	//PB3 = 0 => enable tejp
 	
     while(1)
     {
 		readSensors(PB2);
-		readSensors(PB3);
+		readTapeSensor();
 		initDistanceSensor();
 		triggerSignal();
 		_delay_ms(20);
