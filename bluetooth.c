@@ -1,10 +1,3 @@
-/*
- * GccApplication1.c
- *
- * Created: 11/12/2015 10:04:00 AM
- *  Author: johth918
- */ 
-
 #include <avr/io.h>
 #include <bluetooth.h>
 
