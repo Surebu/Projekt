@@ -12,7 +12,7 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>
 
-
+volatile uint8_t val;
 void btInit(void)
 {
 	/*16MHz ska ha 115.2k i baud rate och har en felmarginal på -3.5%*/
@@ -23,12 +23,12 @@ void btInit(void)
 	PORTA &= ~( _BV(PA2) | _BV(PA3) );
 	/* Set baud rate */
 	
-	UBRRH = 0x00;
+	UBRRH = 0x0;
 	UBRRL = 0x08;		//115200 http://wormfood.net/avrbaudcalc.php
 	/* Enable receiver and transmitter */
 	UCSRB = _BV(RXEN) | _BV(TXEN) | _BV(RXCIE);
 	/* Set frame format: 8data, 1stop bit */
-	UCSRC = _BV(UCSZ0) | _BV(UCSZ1);	//?!?!??!??!?!?!
+	UCSRC = (0 << URSEL) | (0 << UMSEL) | (1 << UPM1) | (1 << UPM0) | (0 << USBS) | (1 << UCSZ1) | (1 << UCSZ0) | (0 << UCPOL)  ;//_BV(UCSZ0) | _BV(UCSZ1);	//?!?!??!??!?!?!
 }
 
 /* Send one byte as soon as transmit buffer is empty.*/
@@ -45,15 +45,14 @@ unsigned char btReceive()
 	/* Wait for data to be received */
 	while (!(UCSRA & _BV(RXC)));
 	/* Get and return received data from buffer */
-	unsigned char readData = UDR;
-	return readData;
+	return UDR;
 }
 
 ISR(USART_RXC_vect)
 {
-	uint8_t bt_data = UDR;
+	val = UDR;
 	/* Echo back received data */
-	btTransmit(bt_data);
+	btTransmit(val);
 }
 
 int main(void)
@@ -61,8 +60,8 @@ int main(void)
 	btInit();
 	sei();
 	
-	char val = 'A'; //0x41;
-	PORTB = ~val; // set PORTB
+	val = 'A'; //0x41;
+	//PORTB = ~val; // set PORTB
 	
 	while(1)
 	{
