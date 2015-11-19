@@ -44,7 +44,7 @@ void enableInterrupts(){
 }
 void initPorts(){
 	//ALLA PORTAR
-	DDRB |= _BV(PB0) | _BV(PB1) | _BV(PB2) | _BV(PB3);	//muxenable , muxmuxmux
+	//DDRB |= _BV(PB0) | _BV(PB1) | _BV(PB2) | _BV(PB3);	//muxenable , muxmuxmux
 	DDRA |= _BV(PA2);									//PA2 triggersignal dist.
 	DDRB = 0xFF;// _BV(PB4) | _BV(PB5) | _BV(PB6) | _BV(PB7); //tests
 }
@@ -71,7 +71,7 @@ void initADConverter(){
 
 	ADMUX |= _BV(MUX0) | _BV(MUX1) | _BV(MUX2); //Set to ADC7 (0111)
 
-	ADCSRA |= (1 << ADATE);  // Set ADC to Free-Running Mode
+	ADCSRA |= (0 << ADATE);  // Set ADC to single Mode
 	ADCSRA |= (1 << ADEN);  // Enable ADC
 	ADCSRA |= (1 << ADSC);  // Start A2D Conversions	
 }
@@ -87,25 +87,42 @@ void triggerSignal(){
 void readTapeSensor(){
 	for (uint8_t tapeNum = 0; tapeNum>4; tapeNum++)
 	{
-		if (ADCH < tapeThreshold)
+		if (tapeNum == 2)
 		{
-			TapeValues |= _BV(33+tapeNum);
-			//TapeValues[num] = 1;
+			ADMUX |= _BV(MUX2) | _BV(MUX1) | ~_BV(MUX0) ; //Set to ADC6 (0110)
+			ADCSRA |= (1 << ADSC);  // Start A2D Conversions	
+			_delay_us(200);
+			ADConvert(tapeNum);
 		}
-		else{
-			TapeValues &= ~_BV(33+tapeNum);
-			//TapeValues[num] = 0;
+		else if (tapeNum == 3)
+		{
+			ADMUX |= _BV(MUX2) | _BV(MUX1) | _BV(MUX0); //Set to ADC7 (0111)
+			ADCSRA |= (1 << ADSC);  // Start A2D Conversions
+			_delay_us(200);
+			ADConvert(tapeNum);
 		}
 	}	
 }
 
+void ADConvert(uint8_t tapeNum){
+	/*if (ADCH < tapeThreshold)
+	{
+		TapeValues |= _BV(tapeNum);
+		//TapeValues[num] = 1;
+	}
+	else{
+		TapeValues &= ~_BV(tapeNum);
+		//TapeValues[num] = 0;
+	}*/
+	PORTB = ADCH;
+}
+
 void readIRSensor(uint8_t num){//FUNKARINTEFÖRHENKEÄRENSNOPDANKWEEDSHITPOJKESOMGILLARANUSPAJ
 	initIRSensors();
-	
-	int data = 0;
+	IRsignals[num] = 0;
+	uint8_t data = 0;
 	uint8_t state = 0; //0 = startbit, 1 = data
 	uint8_t cnt = 0; //Counts the number of databits that have been sent
-		
     while(!IRSTOPFLAG) // Count up while 1
     {
 		if (!(PINA & (1<<PA3))) // if 0
@@ -133,13 +150,13 @@ void readIRSensor(uint8_t num){//FUNKARINTEFÖRHENKEÄRENSNOPDANKWEEDSHITPOJKESOMG
 						data = data << 1;
 						cnt++;
 					}
-					PORTB = data;
+					//PORTB = data;
 					if (cnt >= 3)
 					{
 						state = 0;
 						cnt = 0;
 						IRsignals[num] = data;
-						data = 0;
+						//data = 0;
 					}
 					TCNT0 = 0;
 					break;
@@ -151,28 +168,33 @@ void readIRSensor(uint8_t num){//FUNKARINTEFÖRHENKEÄRENSNOPDANKWEEDSHITPOJKESOMG
 
 void readSensors(uint8_t PBx){
 	PORTB &= ~_BV(PBx);	//enable mux x
-    for (uint8_t num = 0; num>4; num++)//Loop over the sensors
+    for (uint8_t num = 0; num<4; num++)//Loop over the sensors
     {
 	    //num = (num & 3)//maska till 000000xx
+		PORTB &= 0x0C;
 	    PORTB |= num; //set portb = yyyyyyxx
-	    if(PBx == PB2){
-			readIRSensor(num);
-		}
+		//_delay_ms(40);
+		readIRSensor(num);
+		//_delay_ms(10);
+		
+		//_delay_ms(10);
     }
 	PORTB |= _BV(PBx);	//disable mux x
 }
 
 void outputValues(){
-	uint8_t values = 0x0F;
-	PORTB &= values;
+	PORTB &= 0x0F;
 	//values &= TapeValues[0];
-	TapeValues = 0x0f;
-	TapeValues = TapeValues << 4;
-	PORTB = (IRsignals[3]<<4) | (PORTB & 0x0f);//TapeValues;
+	//TapeValues = 0x0f;
+	//TapeValues = TapeValues << 4;
+	//PORTB = (IRsignals[3]<<4) | (PORTB & 0x0f);//TapeValues;
 	
-	//tejpsensorer måste kopplas direkt till adomvandlarna
-	//ir kanske inte funkar?
-	//avstånd funkar!
+	PORTB |= (TapeValues << 4);
+	
+	/*for (uint8_t num = 0; num<4; num++)
+	{
+		PORTB |= IRsignals[num] << 5;
+	}*/
 }
 
 int main(void)
@@ -186,13 +208,14 @@ int main(void)
 	
     while(1)
     {
-		readSensors(PB2);
+		//readSensors(PB2); //Ska fixa IRsensor
 		readTapeSensor();
-		initDistanceSensor();
-		triggerSignal();
-		_delay_ms(20);
+		//initDistanceSensor();
+		//triggerSignal();
+		//_delay_ms(20);
 		//_delay_ms(10);
 		outputValues();
+		_delay_ms(10);
 		//check avstandssensor
     }
 }
