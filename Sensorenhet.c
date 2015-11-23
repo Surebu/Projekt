@@ -17,7 +17,6 @@ volatile uint16_t distance = 0; // in cm
 volatile uint8_t IRSTOPFLAG = 0;
 uint8_t tapeThreshold = 128;
 uint8_t IRsignals[4];
-//uint8_t TapeValues[4];
 uint8_t TapeValues;
 
 ISR(INT0_vect){
@@ -70,54 +69,68 @@ void initADConverter(){
 	ADMUX |= (1 << ADLAR); // Left adjust ADC result to allow easy 8 bit reading
 
 	ADMUX |= _BV(MUX0) | _BV(MUX1) | _BV(MUX2); //Set to ADC7 (0111)
-
+	
 	ADCSRA |= (0 << ADATE);  // Set ADC to single Mode
 	ADCSRA |= (1 << ADEN);  // Enable ADC
 	ADCSRA |= (1 << ADSC);  // Start A2D Conversions	
 }
 
+
 void triggerSignal(){
 	PORTA &= ~_BV(PA2);
 	_delay_us(100);
-	PORTA |= _BV(PA2);
-	_delay_us(20);
-	PORTA &= ~_BV(PA2);
+	PORTA |= _BV(PA2);	//Begin the trigger signal
+	_delay_us(20);		//Wait for 20 us
+	PORTA &= ~_BV(PA2);	//End the signal
+}
+
+uint8_t adc_read(uint8_t ch)
+{
+	// select the corresponding channel 0~7
+	// ANDing with ’7? will always keep the value
+	// of ‘ch’ between 0 and 7
+	ch &= 0b00000111;  // AND operation with 7
+	ADMUX = (ADMUX & 0xF8)|ch; // clears the bottom 3 bits before ORing
+	
+	// start single convertion
+	// write ’1? to ADSC
+	ADCSRA |= (1<<ADSC);
+	
+	// wait for conversion to complete
+	// ADSC becomes ’0? again
+	// till then, run loop continuously
+	while(ADCSRA & (1<<ADSC));
+	
+	return (ADCH);
 }
 
 void readTapeSensor(){
-	for (uint8_t tapeNum = 0; tapeNum>4; tapeNum++)
+	for (uint8_t tapeNum = 0; tapeNum<2; tapeNum++)
 	{
-		if (tapeNum == 2)
+		if (tapeNum == 0)
 		{
-			ADMUX |= _BV(MUX2) | _BV(MUX1) | ~_BV(MUX0) ; //Set to ADC6 (0110)
-			ADCSRA |= (1 << ADSC);  // Start A2D Conversions	
-			_delay_us(200);
+			adc_read(6);
 			ADConvert(tapeNum);
 		}
-		else if (tapeNum == 3)
+		else if (tapeNum == 1)
 		{
-			ADMUX |= _BV(MUX2) | _BV(MUX1) | _BV(MUX0); //Set to ADC7 (0111)
-			ADCSRA |= (1 << ADSC);  // Start A2D Conversions
-			_delay_us(200);
+			adc_read(7);
 			ADConvert(tapeNum);
 		}
-	}	
+	}
 }
 
 void ADConvert(uint8_t tapeNum){
-	/*if (ADCH < tapeThreshold)
+	if (ADCH < tapeThreshold)
 	{
 		TapeValues |= _BV(tapeNum);
-		//TapeValues[num] = 1;
 	}
 	else{
 		TapeValues &= ~_BV(tapeNum);
-		//TapeValues[num] = 0;
-	}*/
-	PORTB = ADCH;
+	}
 }
 
-void readIRSensor(uint8_t num){//FUNKARINTEFÖRHENKEÄRENSNOPDANKWEEDSHITPOJKESOMGILLARANUSPAJ
+void readIRSensor(uint8_t num){
 	initIRSensors();
 	IRsignals[num] = 0;
 	uint8_t data = 0;
@@ -133,30 +146,28 @@ void readIRSensor(uint8_t num){//FUNKARINTEFÖRHENKEÄRENSNOPDANKWEEDSHITPOJKESOMG
 				if (PINA & (1<<PA3)) // if 1
 				{
 					
-					if (TCNT0 >= 120 && state == 0) //40k, 160
+					if (TCNT0 >= 120 && state == 0)
 					{
 						//data = 0;
 						state = 1;
 						cnt = 0;
 					}
-					else if (TCNT0 >= 60 && state == 1) //20k, 80
+					else if (TCNT0 >= 60 && state == 1)
 					{
 						data = data << 1;
 						data++;
 						cnt++;
 					}
-					else if (TCNT0 >= 30 && state == 1)//10k, 50
+					else if (TCNT0 >= 30 && state == 1)
 					{
 						data = data << 1;
 						cnt++;
 					}
-					//PORTB = data;
 					if (cnt >= 3)
 					{
 						state = 0;
 						cnt = 0;
 						IRsignals[num] = data;
-						//data = 0;
 					}
 					TCNT0 = 0;
 					break;
@@ -166,35 +177,24 @@ void readIRSensor(uint8_t num){//FUNKARINTEFÖRHENKEÄRENSNOPDANKWEEDSHITPOJKESOMG
 	}
 }
 
-void readSensors(uint8_t PBx){
-	PORTB &= ~_BV(PBx);	//enable mux x
+void readIRSensors(){
+	PORTB &= ~_BV(PB2);	//enable mux x
     for (uint8_t num = 0; num<4; num++)//Loop over the sensors
     {
-	    //num = (num & 3)//maska till 000000xx
-		PORTB &= 0x0C;
-	    PORTB |= num; //set portb = yyyyyyxx
-		//_delay_ms(40);
+		PORTB &= 0x00;
+	    PORTB |= num; //set portb to 000000xx, where xx is num
 		readIRSensor(num);
-		//_delay_ms(10);
-		
-		//_delay_ms(10);
     }
-	PORTB |= _BV(PBx);	//disable mux x
+	PORTB |= _BV(PB2);	//disable mux x
 }
 
 void outputValues(){
-	PORTB &= 0x0F;
-	//values &= TapeValues[0];
-	//TapeValues = 0x0f;
-	//TapeValues = TapeValues << 4;
-	//PORTB = (IRsignals[3]<<4) | (PORTB & 0x0f);//TapeValues;
+	PORTB &= 0x03;		//Clear the port except the select bits to the MUX
 	
-	PORTB |= (TapeValues << 4);
+	PORTB |= (TapeValues << 2);
 	
-	/*for (uint8_t num = 0; num<4; num++)
-	{
-		PORTB |= IRsignals[num] << 5;
-	}*/
+	//PORTB |= (IRsignals[0] << 2);
+	PORTB |= (IRsignals[3] << 5);
 }
 
 int main(void)
@@ -202,13 +202,10 @@ int main(void)
 	enableInterrupts();
 	initADConverter();
 	initPorts();
-	//DDRD |= _BV(PD0) | _BV(PD1);
-	//PB0 && PB1 = styrsignaler 0=>0, 1=>1
-	//PB2 = 0 => enable IR
 	
     while(1)
     {
-		//readSensors(PB2); //Ska fixa IRsensor
+		readIRSensors();
 		readTapeSensor();
 		//initDistanceSensor();
 		//triggerSignal();
