@@ -28,7 +28,7 @@ void btInit(void)
 	/* Enable receiver and transmitter */
 	UCSRB = _BV(RXEN) | _BV(TXEN) | _BV(RXCIE);
 	/* Set frame format: 8data, 1stop bit */
-	UCSRC = (0 << URSEL) | (0 << UMSEL) | (0 << UPM1) | (0 << UPM0) | (0 << USBS) | (1 << UCSZ1) | (1 << UCSZ0) | (0 << UCPOL)  ;//_BV(UCSZ0) | _BV(UCSZ1);	//?!?!??!??!?!?!
+	UCSRC = (1 << URSEL) | (0 << UMSEL) | (0 << UPM1) | (0 << UPM0) | (0 << USBS) | (1 << UCSZ1) | (1 << UCSZ0) | (0 << UCPOL)  ;//_BV(UCSZ0) | _BV(UCSZ1);	//?!?!??!??!?!?!
 }
 
 /* Send one byte as soon as transmit buffer is empty.*/
