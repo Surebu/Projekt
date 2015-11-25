@@ -22,7 +22,7 @@ class Input:
         """ Options: x, y, font, color, restricted, maxlength, prompt """
         self.options = Config(options, ['x', '0'], ['y', '0'], ['font', 'pygame.font.Font(None, 32)'],
                               ['color', '(0,0,0)'], ['restricted', '\'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!"#$%&\\\'()*+,-./:;<=>?@[\]^_`{|}~\''],
-                              ['maxlength', '-1'], ['prompt', '\'\''], ['function', 'no_function'])
+                              ['maxlength', '-1'], ['prompt', '\'\''], ['function', 'no_function'], ['obj', 'None'])
         self.x = self.options.x; self.y = self.options.y
         self.font = self.options.font
         self.color = self.options.color
@@ -31,6 +31,7 @@ class Input:
         self.function = self.options.function
         self.prompt = self.options.prompt; self.value = ''
         self.shifted = False
+        self.obj = self.options.obj
 
     def set_pos(self, x, y):
         """ Set the position to x, y """
@@ -55,7 +56,10 @@ class Input:
                 if event.key == K_BACKSPACE: self.value = self.value[:-1]
                 elif event.key == K_LSHIFT or event.key == K_RSHIFT: self.shifted = True
                 elif event.key == K_SPACE: self.value += ' '
-                elif event.key == K_RETURN: self.function(self.value)
+                elif event.key == K_RETURN:
+                    if self.obj is None:
+                        self.function(self.value)
+                    else: self.function(self.obj,self.value)
                 if not self.shifted:
                     if event.key == K_a and 'a' in self.restricted: self.value += 'a'
                     elif event.key == K_b and 'b' in self.restricted: self.value += 'b'
