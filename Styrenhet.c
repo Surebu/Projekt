@@ -111,9 +111,11 @@ void timer_init(){
 
 void DDR_init(){
 	DDRD |= ( _BV(PD2) | _BV(PD3) | _BV(PD4) | _BV(PD5));
-	DDRB |= _BV(PB3);
-	DDRA |= _BV(PA3); //Utsignal för IR-sändare
+	DDRB |= _BV(PB3); //Utsignal för IR-sändare
+	DDRA |= _BV(PA3); 
+	PORTA &= ~_BV(PA3);
 	DDRA |= _BV(PA0) | _BV(PA1) | _BV(PA2); //Utsignaler för dioder
+	DDRD |= _BV(PD6); //Laser pinne
 }
 
 /*
@@ -173,6 +175,17 @@ ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
 	cmdL = command & 0x0F;	
 }
 
+void shootLaser(){
+	PORTD |= _BV(PD6);
+	_delay_ms(500);
+	PORTD &= ~_BV(PD6);	
+	_delay_ms(500);
+}
+
+void activateLaserDetector(){
+	PORTA |= _BV(PA3);
+	PORTA &= ~_BV(PA3);
+}
 int main(void)
 {
 	timer_init();
@@ -187,11 +200,13 @@ int main(void)
 	PORTD |= _BV(PD2); //right, 0 backward and 1 forward
 	PORTD |=  _BV(PD3); //left, 1 backward and 0 forward
 	
-	
 	while(1)
 	{
+		shootLaser();
 		if(cmdH = 1){
 			setMotors(cmdL);
+		}else if(cmdH = 2){
+			activateLaserDetector();
 		}
 	}
 }

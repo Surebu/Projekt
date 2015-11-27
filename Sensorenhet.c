@@ -19,6 +19,8 @@ uint8_t tapeThreshold = 128;
 uint8_t IRsignals[4];
 uint8_t TapeValues;
 
+volatile uint8_t byteCount = 0; //Viktigt att den är volatile
+
 //SPI-constants
 const uint8_t TAPE_SENSOR_FRONT_LEFT = 0x11;
 const uint8_t TAPE_SENSOR_FRONT_RIGHT = 0x12;
@@ -33,6 +35,7 @@ const uint8_t IR_SENSOR_LEFT = 0x34;
 const uint8_t DISTANCE_SENSOR = 0x20;
 const uint8_t HIT_DETECTOR = 0x40;
 
+uint8_t hit = 0;
 
 ISR(INT0_vect){
 	distance = 0;			// set dist to 0
@@ -55,7 +58,6 @@ void enableInterrupts(){
 	MCUCR = 1<<ISC01 | 1<<ISC00;	// Trigger INT0 on rising edge	
 	TIMSK |= _BV(OCIE1A);			//enable timer interrupts
 	OCR1A = 7000;					//64*x/16000000 = 28*10^-3 => x = 7000
-	sei();
 }
 void initPorts(){
 	//ALLA PORTAR
@@ -99,18 +101,22 @@ void SPI_init(){
 	SPCR |= _BV(SPE) | _BV(SPIE); //Set as slave, SPI-enable set and interrupts enabled
 }
 
-void sendData(uint8_t sensor, uint8_t data){
-	
-	//Which sensor
-	SPDR = 0xFF; //Load data to be sent
-	PORTB |= _BV(PB3); //Interrupt targeting module
-	_delay_ms(1000);
-	PORTB &= ~_BV(PB3); 
-	while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed
-	
-	//Sensor data
-	SPDR = 0x33; //Load data to be sent
-	while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed
+void sendData(uint8_t data){
+	SPDR = data; //Load data to be sent
+	PORTB |= _BV(PB3);
+	//while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed
+	PORTB &= ~_BV(PB3);
+	while(byteCount < 1);
+	byteCount = 0;
+	PORTD &= 0x9F;
+}
+
+ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
+	//PORTD |= _BV(PD6);
+	byteCount += 1;
+	//PORTD &= 0x9F;
+	//PORTD |= byteCount << 5;
+	//PORTD &= ~_BV(PD6);
 }
 
 void triggerSignal(){
@@ -148,19 +154,24 @@ void readTapeSensors(){
 		{
 			//sendData(TAPE_SENSOR_FRONT_LEFT, adc_read(6));
 			
-			adc_read(6);
-			ADConvert(tapeNum);
+			sendData(TAPE_SENSOR_FRONT_LEFT);
+			sendData(adc_read(6));
+			ADConvert(tapeNum);	
 		}
 		else if (tapeNum == 1)
 		{
 			//sendData(TAPE_SENSOR_BACK_LEFT, adc_read(7));
-			adc_read(7);
+			sendData(TAPE_SENSOR_BACK_LEFT);
+			sendData(adc_read(7));
+			//adc_read(7);
 			ADConvert(tapeNum);
 		}
 		else if (tapeNum == 2)
 		{
 			//sendData(TAPE_SENSOR_BACK_RIGHT, adc_read(5));
-			adc_read(5);
+			sendData(TAPE_SENSOR_BACK_RIGHT);
+			sendData(adc_read(5));
+			//adc_read(5);
 			ADConvert(tapeNum);
 		}
 		/*else if (tapeNum == 3)
@@ -169,6 +180,8 @@ void readTapeSensors(){
 			ADConvert(tapeNum);
 		}*/
 	}
+	sendData(0xFF);
+	sendData(TapeValues);
 }
 
 void ADConvert(uint8_t tapeNum){
@@ -266,8 +279,8 @@ void btInit(void)
 	/*ej säker på följande 3 rader*/
 	/*för att få önskad baudrate så sätter man F_CPU = 4.7456E56 nånting fråga peter*/
 
-	//DDRA |= _BV(PA2) | _BV(PA3);
-	//PORTA &= ~( _BV(PA2) | _BV(PA3) );
+	DDRA |= _BV(PA2) | _BV(PA3);
+	PORTA &= ~( _BV(PA2) | _BV(PA3) );
 	/* Set baud rate */
 	
 	UBRRH = 0x0;
@@ -305,13 +318,20 @@ unsigned char btReceive()
 void outputValues(){
 	PORTB &= 0x0F;		//Clear the port except the select bits to the MUX
 	
-	PORTB |= (TapeValues << 4); //00011100, tape works
+	//PORTB |= (TapeValues << 4); //00011100, tape works
 	
 	//PORTB |= (IRsignals[2] << 2) & 0x1C; //00011100
-	//PORTB |= (IRsignals[1] << 5) & 0xE0; //11100000, IR-sensor 0 funkar inte
+	PORTB |= (IRsignals[2] << 5) & 0xE0; //11100000, IR-sensor 0 funkar inte
 	
 	//Distance sensor
 	//PORTB |= (distance << 3); //visar 1 cm för mycket
+}
+
+void readLaserDetector(){
+	if(hit == 1){
+		sendData(HIT_DETECTOR);
+		sendData(hit);
+	}
 }
 
 int main(void)
@@ -319,21 +339,24 @@ int main(void)
 	enableInterrupts();
 	initADConverter();
 	initPorts();
-	//SPI_init();
-	btInit();
-	
+	SPI_init();
+	//btInit();
+	sei();
+	//btReceive();
+		
     while(1)
     {
-		//sendData(0xFF,0xFF);
-		readIRSensors();
-		readTapeSensors();
+		readLaserDetector();
+		//btTransmit(0xF0);
+		//readIRSensors();
+		//readTapeSensors();
 		//initDistanceSensor();
 		//triggerSignal();
 		//_delay_ms(20);
 		//_delay_ms(10);
-		outputValues();
-		_delay_ms(10);
+		//outputValues();
+		//_delay_ms(10);
 		//check avstandssensor
-		btTransmit(IRsignals[2]);
+		//btTransmit(IRsignals[2]);
     }
 }
