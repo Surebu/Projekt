@@ -1,4 +1,9 @@
+"""
+En samling av konstanter och hjälpfunktioner/klasser som används på flera ställen i programmet.
+"""
 import pygame
+from pygame.locals import *
+
 
 
 def no_function(*args):
@@ -11,6 +16,34 @@ RIGHT = b'\xf0'
 BACKWARDS = b'\xcc'
 STOP = b'\x00'
 
+CHANGE_CONTROL_MODE = b'\xaa'
+
+## Adresser till och i roboten och hjälpkonstanter
+SUREBU1_MACADDR = '00:06:66:03:16:FC'
+RETRIEVABLE_DATA = 11
+ADDRESSES = [
+    "IR-sensor 1",
+    "IR-sensor 2",
+    "IR-sensor 3",
+    "IR-sensor 4",
+    "Tejpsensor 1",
+    "Tejpsensor 2",
+    "Tejpsensor 3",
+    "Tejpsensor 4",
+    "Avståndssensor",
+    "Träffdetektor",
+    "Liv",
+    "Kontroll läge"
+]
+# Sensorkommandon
+SENSORS = [
+    b'\x01',    #testsensor 1
+    b'\x02',    #testsensor 2
+    b'\x03',    #testsensor 3
+    b'\x04',    #testsensor 4
+    b'\x05',    #testsensor 5
+    b'\x06',    #testsensor 6
+]
 ## Färger
 
 MAIN_BACKGROUND = (246, 166, 170)
@@ -33,6 +66,9 @@ UNDERLINED_FONT.set_underline(True)
 
 
 class Dims:
+    """
+    Bara en container-klass för att spara relationer mellan objekt i fönstret
+    """
     def __init__(self, window_dimensions):
         self.totalWidth = window_dimensions[0]
         self.totalHeight = window_dimensions[1]

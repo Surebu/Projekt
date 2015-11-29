@@ -1,9 +1,13 @@
 # input lib
-from pygame.locals import *
+"""
+Skapat av pywiz32 (http://pygame.org/project-EzText-920-.html), utökat och modefierat till att passa GUI:t
+ och kunna kopplas enkelt till funktioner/metoder och objekt
+"""
 from misc import *
-import pygame, string
+
 
 class ConfigError(KeyError): pass
+
 
 class Config:
     """ A utility for configuration """
@@ -15,6 +19,7 @@ class Config:
             assertions.append(key[0])
         for key in options.keys():
             if key not in assertions: raise ConfigError(key+' not expected as option')
+
 
 class Input:
     """ A text input for pygame apps """
