@@ -31,6 +31,25 @@ uint8_t dataL = 0;
 uint8_t sensor = 0; //Which sensor sends data
 uint8_t sensorData = 0; //Data from sensor
 
+// Kommunikation med datorn
+volatile uint8_t requestFlag = 0;	//flagga för att signalera om datorn frågat om ett värde
+volatile uint8_t dataAddress = 0;	//vilken "address" ligger värdet som datorn efterfrågat på
+
+volatile uint8_t dataValues[12] = {	
+	1,	//IR-sensor 1	vänster	
+	3,	//IR-sensor 2	bak
+	3,	//IR-sensor 3	fram
+	7,	//IR-sensor 4	höger
+	0,	//Tejpsensor 1	fram-vänster
+	4,	//Tejpsensor 2	bak-vänster
+	2,	//Tejpsensor 3	bak-höger
+	0,	//Tejpsensor 4	fram-höger
+	13,	//Avståndssensor
+	37,	//Träffdetektor
+	7,	//Liv			
+	1	//Kontrolläge	
+};
+
 uint8_t byteCount = 0;
 
 void SPI_MasterInit(void)
@@ -108,7 +127,6 @@ ISR(INT0_vect){
 		PORTB &= ~_BV(PB3);
 		sensor = SPI_MasterTransmit(0x0F); //Receive which sensor that wants to send data
 		PORTB |= _BV(PB3);
-		btTransmit(sensor);
 	}
 	
 	//Data
@@ -116,8 +134,8 @@ ISR(INT0_vect){
 		PORTB &= ~_BV(PB3);
 		sensorData = SPI_MasterTransmit(0xF0); //Receive the sensor data
 		PORTB |= _BV(PB3);
+		//dataValues[sensor] = sensorData;
 		byteCount = 0;
-		//btTransmit(sensorData);
 	}
 	
 	/*PORTD |= _BV(PD6);
@@ -207,12 +225,11 @@ unsigned char btReceive()
 	return UDR;
 }
 
-/*ISR(USART_RXC_vect)
+ISR(USART_RXC_vect)
 {
-	//val = UDR;
-	// Echo back received data 
-	//btTransmit(val);
-}*/
+	dataAddress = UDR;	//vilken sensor vill dator veta om?
+	requestFlag = 1;// sätt flagga att skicka saker
+}
 
 int main(void)
 {	
@@ -235,13 +252,16 @@ int main(void)
 	
     while(1)
     {		
-		if(sensorData == 1){
+		/*if(sensorData == 1){
 			_delay_ms(2000);	
 			PORTB &= ~_BV(PB1);
 			SPI_MasterTransmit(2);
 			PORTB = _BV(PB1);
+		}*/
+		if(requestFlag == 1){
+			btTransmit(dataValues[dataAddress]);		//skicka efterfrågat värde till datorn
+			requestFlag = 0;	//nu har vi skickat
 		}
-		
 		/*PORTB &= ~_BV(PB3);
 		SPI_MasterTransmit(0xF0);
 		PORTB |= _BV(PB3);*/
