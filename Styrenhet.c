@@ -112,12 +112,14 @@ void timer_init(){
 void DDR_init(){
 	DDRD |= ( _BV(PD2) | _BV(PD3) | _BV(PD4) | _BV(PD5));
 	DDRB |= _BV(PB3); //Utsignal för IR-sändare
-	DDRA |= _BV(PA3); 
+	DDRA |= _BV(PA3); //Aktiveringssignal
 	PORTA &= ~_BV(PA3);
 	DDRA |= _BV(PA0) | _BV(PA1) | _BV(PA2); //Utsignaler för dioder
 	DDRD |= _BV(PD6); //Laser pinne
 }
 
+//----------------------------------Motors----------------------------------------
+//--------------------------------------------------------------------------------
 /*
 * Sätter hastighet och riktning på motorpar.
 * Tar in pekare till OCR för motorparet, vilken pinne som är motorparets direction och ett argument att sätta motorparet till(se DS).
@@ -152,7 +154,12 @@ void setMotors(uint8_t arg){
 	setMotorPair(&OCR1A, PD2, arg1);
 	setMotorPair(&OCR1B, PD3, arg2);
 }
+//----------------------------------------------------------------------
+//----------------------------------------------------------------------
 
+
+//---------------------------------Diods---------------------------------
+//-----------------------------------------------------------------------
 void init_diodPorts(){
 	PORTA |= _BV(PA0) | _BV(PA1) | _BV(PA2); //Alla dioder lyser från början
 }
@@ -160,6 +167,11 @@ void init_diodPorts(){
 void decrement_diods(){
 	PORTA >> 1; 
 }
+//------------------------------------------------------------------------
+//------------------------------------------------------------------------
+
+//-----------------------------------SPI---------------------------------
+//-----------------------------------------------------------------------
 
 void SPI_init(){
 	DDRB |= _BV(PB6); //MISO-pin configured as output
@@ -167,14 +179,17 @@ void SPI_init(){
 	SPCR |= _BV(SPE) | _BV(SPIE); //SPI-enable set and interrupts enabled
 }
 
-
 //Interrupt routine for SPI-transmission
 ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
 	command = SPDR;
 	cmdH = command >> 4;
 	cmdL = command & 0x0F;	
 }
+//-----------------------------------------------------------------------
+//-----------------------------------------------------------------------
 
+//--------------------------------Lasorz---------------------------------
+//-----------------------------------------------------------------------
 void shootLaser(){
 	PORTD |= _BV(PD6);
 	_delay_ms(500);
@@ -186,6 +201,9 @@ void activateLaserDetector(){
 	PORTA |= _BV(PA3);
 	PORTA &= ~_BV(PA3);
 }
+//-----------------------------------------------------------------------
+//-----------------------------------------------------------------------
+
 int main(void)
 {
 	timer_init();

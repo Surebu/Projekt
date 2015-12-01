@@ -22,18 +22,19 @@ uint8_t TapeValues;
 volatile uint8_t byteCount = 0; //Viktigt att den är volatile
 
 //SPI-constants
-const uint8_t TAPE_SENSOR_FRONT_LEFT = 0x11;
-const uint8_t TAPE_SENSOR_FRONT_RIGHT = 0x12;
-const uint8_t TAPE_SENSOR_BACK_LEFT = 0x13;
-const uint8_t TAPE_SENSOR_BACK_RIGHT = 0x14;
+const uint8_t IR_SENSOR_LEFT = 0;
+const uint8_t IR_SENSOR_BACK = 1;
+const uint8_t IR_SENSOR_FRONT = 2;
+const uint8_t IR_SENSOR_RIGHT = 3;
 
-const uint8_t IR_SENSOR_FRONT = 0x31;
-const uint8_t IR_SENSOR_RIGHT = 0x32;
-const uint8_t IR_SENSOR_BACK = 0x33;
-const uint8_t IR_SENSOR_LEFT = 0x34;
+const uint8_t TAPE_SENSOR_FRONT_LEFT = 4;
+const uint8_t TAPE_SENSOR_BACK_LEFT = 5;
+const uint8_t TAPE_SENSOR_BACK_RIGHT = 6;
+const uint8_t TAPE_SENSOR_FRONT_RIGHT = 7;
 
-const uint8_t DISTANCE_SENSOR = 0x20;
-const uint8_t HIT_DETECTOR = 0x40;
+const uint8_t DISTANCE_SENSOR = 8;
+const uint8_t HIT_DETECTOR = 9;
+const uint8_t TAPE_VALUES = 10;
 
 uint8_t hit = 0;
 
@@ -47,7 +48,9 @@ ISR(INT0_vect){
 			distance++;		//+1cm
 		}
 	}
-	//sendData(DISTANCE_SENSOR, distance); 
+	//sendData(DISTANCE_SENSOR, distance);
+	//sendData(DISTANCE_SENSOR);
+	//sendData(distance); 
 }
 
 ISR(TIMER1_COMPA_vect){
@@ -174,13 +177,15 @@ void readTapeSensors(){
 			//adc_read(5);
 			ADConvert(tapeNum);
 		}
-		/*else if (tapeNum == 3)
+		else if (tapeNum == 3)
 		{
-			sendData(TAPE_SENSOR_FRONT_RIGHT, adc_read(4));
+			//sendData(TAPE_SENSOR_FRONT_RIGHT, adc_read(4));
+			sendData(TAPE_SENSOR_FRONT_RIGHT);
+			sendData(adc_read(4));
 			ADConvert(tapeNum);
-		}*/
+		}
 	}
-	sendData(0xFF);
+	sendData(TAPE_VALUES);
 	sendData(TapeValues);
 }
 
@@ -249,25 +254,34 @@ void readIRSensors(){
 	    PORTB |= num; //set portb to 000000xx, where xx is num
 		readIRSensor(num);
     }
-	/*for (uint8_t num = 0; num<4; num++)//Loop to send all IR-sensor values
+	for (uint8_t num = 0; num<4; num++)//Loop to send all IR-sensor values
 	{
 		switch(num){
 			case 0:
-				sendData(IR_SENSOR_LEFT, IRsignals[num]);
+				//sendData(IR_SENSOR_LEFT, IRsignals[num]);
+				sendData(IR_SENSOR_LEFT);
+				sendData(IRsignals[num]);
 				break;
 			case 1:
-				sendData(IR_SENSOR_BACK, IRsignals[num]);
+				//sendData(IR_SENSOR_BACK, IRsignals[num]);
+				sendData(IR_SENSOR_BACK);
+				sendData(IRsignals[num]);
 				break;
 			case 2:
-				sendData(IR_SENSOR_FRONT, IRsignals[num]);
+				//sendData(IR_SENSOR_FRONT, IRsignals[num]);
+				sendData(IR_SENSOR_FRONT);
+				sendData(IRsignals[num]);
 				break;
 			case 3:
-				sendData(IR_SENSOR_RIGHT, IRsignals[num]);
+				//sendData(IR_SENSOR_RIGHT, IRsignals[num]);
+				sendData(IR_SENSOR_RIGHT);
+				sendData(IRsignals[num]);
 				break;
 			default:
-				sendData(0xFF, 0xFF);
+				sendData(IR_SENSOR_RIGHT);
+				sendData(IRsignals[num]);
 		}
-	}*/
+	}
 	
 	PORTB |= _BV(PB2);	//disable mux x
 }
@@ -303,7 +317,7 @@ int main(void)
     while(1)
     {
 		//readLaserDetector();
-		//readIRSensors();
+		readIRSensors();
 		readTapeSensors();
 		//initDistanceSensor();
 		//triggerSignal();
