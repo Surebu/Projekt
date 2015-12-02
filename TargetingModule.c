@@ -41,6 +41,7 @@ volatile uint8_t requestFlag = 0;	//flagga för att signalera om datorn frågat om
 volatile uint8_t dataAddress = 0;	//vilken "address" ligger värdet som datorn efterfrågat på
 
 volatile uint8_t dataValues[13] = {	
+<<<<<<< HEAD
 	1,	//IR-sensor 1	vänster	
 	3,	//IR-sensor 2	bak
 	3,	//IR-sensor 3	fram
@@ -54,6 +55,21 @@ volatile uint8_t dataValues[13] = {
 	7,	//Liv			
 	1,	//Kontrolläge	
 	0 //Tape values
+=======
+	1,	//IR-sensor 1	vänster			0
+	3,	//IR-sensor 2	bak				1
+	3,	//IR-sensor 3	fram			2
+	7,	//IR-sensor 4	höger			3
+	0,	//Tejpsensor 1	fram-vänster	4
+	4,	//Tejpsensor 2	bak-vänster		5
+	2,	//Tejpsensor 3	bak-höger		6
+	0,	//Tejpsensor 4	fram-höger		7
+	13,	//Avståndssensor				8
+	37,	//Träffdetektor					9
+	5,	//Liv							A
+	1,	//Kontrolläge					B
+	0	//TapeValues					C
+>>>>>>> origin/master
 };
 
 const uint8_t IR_SENSOR_LEFT = 0;

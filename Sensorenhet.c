@@ -22,6 +22,7 @@ uint8_t TapeValues;
 volatile uint8_t byteCount = 0; //Viktigt att den är volatile
 
 //SPI-constants
+<<<<<<< HEAD
 const uint8_t IR_SENSOR_LEFT = 0;
 const uint8_t IR_SENSOR_BACK = 1;
 const uint8_t IR_SENSOR_FRONT = 2;
@@ -35,6 +36,21 @@ const uint8_t TAPE_SENSOR_FRONT_RIGHT = 7;
 const uint8_t DISTANCE_SENSOR = 8;
 const uint8_t HIT_DETECTOR = 9;
 const uint8_t TAPE_VALUES = 10;
+=======
+const uint8_t TAPE_SENSOR_FRONT_LEFT = 0x04;
+const uint8_t TAPE_SENSOR_FRONT_RIGHT = 0x07;
+const uint8_t TAPE_SENSOR_BACK_LEFT = 0x05;
+const uint8_t TAPE_SENSOR_BACK_RIGHT = 0x06;
+
+const uint8_t IR_SENSOR_FRONT = 0x02;
+const uint8_t IR_SENSOR_RIGHT = 0x03;
+const uint8_t IR_SENSOR_BACK = 0x01;
+const uint8_t IR_SENSOR_LEFT = 0x00;
+
+const uint8_t DISTANCE_SENSOR = 0x08;
+const uint8_t HIT_DETECTOR = 0x09;
+const uint8_t TAPE_VALUES = 0x0C;
+>>>>>>> origin/master
 
 uint8_t hit = 0;
 
@@ -48,9 +64,12 @@ ISR(INT0_vect){
 			distance++;		//+1cm
 		}
 	}
+<<<<<<< HEAD
 	//sendData(DISTANCE_SENSOR, distance);
 	//sendData(DISTANCE_SENSOR);
 	//sendData(distance); 
+=======
+>>>>>>> origin/master
 }
 
 ISR(TIMER1_COMPA_vect){
@@ -104,16 +123,18 @@ void SPI_init(){
 	SPCR |= _BV(SPE) | _BV(SPIE); //Set as slave, SPI-enable set and interrupts enabled
 }
 
+//Laddar data som ska skickas över SPIn
 void sendData(uint8_t data){
 	SPDR = data; //Load data to be sent
 	PORTB |= _BV(PB3);
-	//while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed
+	//while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed, FUNKAR INTE
 	PORTB &= ~_BV(PB3);
 	while(byteCount < 1);
 	byteCount = 0;
 	PORTD &= 0x9F;
 }
 
+//Räknar hur många bytes vi har skickat över SPIn
 ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
 	//PORTD |= _BV(PD6);
 	byteCount += 1;
@@ -122,6 +143,7 @@ ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
 	//PORTD &= ~_BV(PD6);
 }
 
+//Triggersignal för att starta avståndssensorn
 void triggerSignal(){
 	PORTA &= ~_BV(PA2);
 	_delay_us(100);
@@ -130,6 +152,7 @@ void triggerSignal(){
 	PORTA &= ~_BV(PA2);	//End the signal
 }
 
+//Läser av tejpsensor nr ch
 uint8_t adc_read(uint8_t ch)
 {
 	// select the corresponding channel 0~7
@@ -151,34 +174,32 @@ uint8_t adc_read(uint8_t ch)
 }
 
 void readTapeSensors(){
-	for (uint8_t tapeNum = 0; tapeNum<3; tapeNum++)
+	for (uint8_t tapeNum = 0; tapeNum<4; tapeNum++)
 	{
 		if (tapeNum == 0)
-		{
-			//sendData(TAPE_SENSOR_FRONT_LEFT, adc_read(6));
-			
+		{			
 			sendData(TAPE_SENSOR_FRONT_LEFT);
 			sendData(adc_read(6));
+			adc_read(6);
 			ADConvert(tapeNum);	
 		}
 		else if (tapeNum == 1)
 		{
-			//sendData(TAPE_SENSOR_BACK_LEFT, adc_read(7));
 			sendData(TAPE_SENSOR_BACK_LEFT);
 			sendData(adc_read(7));
-			//adc_read(7);
+			adc_read(7);
 			ADConvert(tapeNum);
 		}
 		else if (tapeNum == 2)
 		{
-			//sendData(TAPE_SENSOR_BACK_RIGHT, adc_read(5));
 			sendData(TAPE_SENSOR_BACK_RIGHT);
 			sendData(adc_read(5));
-			//adc_read(5);
+			adc_read(5);		//måste användas om vi skickar Tapevalues som sendData
 			ADConvert(tapeNum);
 		}
 		else if (tapeNum == 3)
 		{
+<<<<<<< HEAD
 			//sendData(TAPE_SENSOR_FRONT_RIGHT, adc_read(4));
 			sendData(TAPE_SENSOR_FRONT_RIGHT);
 			sendData(adc_read(4));
@@ -187,8 +208,17 @@ void readTapeSensors(){
 	}
 	sendData(TAPE_VALUES);
 	sendData(TapeValues);
+=======
+			sendData(TAPE_SENSOR_FRONT_RIGHT);
+			sendData(adc_read(4));
+			adc_read(4);
+			ADConvert(tapeNum);
+		}
+	}
+>>>>>>> origin/master
 }
 
+//konverterar sensorvärdet och lagrar det i Tapevalues
 void ADConvert(uint8_t tapeNum){
 	if (ADCH < tapeThreshold)
 	{
@@ -254,6 +284,7 @@ void readIRSensors(){
 	    PORTB |= num; //set portb to 000000xx, where xx is num
 		readIRSensor(num);
     }
+<<<<<<< HEAD
 	for (uint8_t num = 0; num<4; num++)//Loop to send all IR-sensor values
 	{
 		switch(num){
@@ -282,21 +313,54 @@ void readIRSensors(){
 				sendData(IRsignals[num]);
 		}
 	}
+=======
+>>>>>>> origin/master
 	
 	PORTB |= _BV(PB2);	//disable mux x
 }
 
 
 void outputValues(){
-	PORTB &= 0x0F;		//Clear the port except the select bits to the MUX
+	//PORTB &= 0x0F;		//Clear the port except the select bits to the MUX
 	
 	//PORTB |= (TapeValues << 4); //00011100, tape works
 	
 	//PORTB |= (IRsignals[2] << 2) & 0x1C; //00011100
-	PORTB |= (IRsignals[2] << 5) & 0xE0; //11100000, IR-sensor 0 funkar inte
+	//PORTB |= (IRsignals[2] << 5) & 0xE0; //11100000, IR-sensor 0 funkar inte
 	
 	//Distance sensor
 	//PORTB |= (distance << 3); //visar 1 cm för mycket
+	
+	for (uint8_t num = 0; num<4; num++)//Loop to send all IR-sensor values
+	{
+		switch(num){
+			case 0:
+			sendData(IR_SENSOR_LEFT);
+			sendData(IRsignals[num]);
+			break;
+			case 1:
+			sendData(IR_SENSOR_BACK);
+			sendData(IRsignals[num]);
+			break;
+			case 2:
+			sendData(IR_SENSOR_FRONT);
+			sendData(IRsignals[num]);
+			break;
+			case 3:
+			sendData(IR_SENSOR_RIGHT);
+			sendData(IRsignals[num]);
+			break;
+			default:
+			sendData(0xFF);
+			sendData(0xFF);
+		}
+	}
+	
+	sendData(DISTANCE_SENSOR);
+	sendData(distance);
+	
+	sendData(TAPE_VALUES);
+	sendData(TapeValues);
 }
 
 void readLaserDetector(){
@@ -319,11 +383,11 @@ int main(void)
 		//readLaserDetector();
 		readIRSensors();
 		readTapeSensors();
-		//initDistanceSensor();
-		//triggerSignal();
+		initDistanceSensor();
+		triggerSignal();
 		//_delay_ms(20);
-		//_delay_ms(10);
-		//outputValues();
+		_delay_ms(10);
+		outputValues();
 		//_delay_ms(10);
 		//check avstandssensor
     }
