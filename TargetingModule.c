@@ -35,19 +35,20 @@ uint8_t sensorData = 0; //Data from sensor
 volatile uint8_t requestFlag = 0;	//flagga för att signalera om datorn frågat om ett värde
 volatile uint8_t dataAddress = 0;	//vilken "address" ligger värdet som datorn efterfrågat på
 
-volatile uint8_t dataValues[12] = {	
-	1,	//IR-sensor 1	vänster	
-	3,	//IR-sensor 2	bak
-	3,	//IR-sensor 3	fram
-	7,	//IR-sensor 4	höger
-	0,	//Tejpsensor 1	fram-vänster
-	4,	//Tejpsensor 2	bak-vänster
-	2,	//Tejpsensor 3	bak-höger
-	0,	//Tejpsensor 4	fram-höger
-	13,	//Avståndssensor
-	37,	//Träffdetektor
-	7,	//Liv			
-	1	//Kontrolläge	
+volatile uint8_t dataValues[13] = {	
+	1,	//IR-sensor 1	vänster			0
+	3,	//IR-sensor 2	bak				1
+	3,	//IR-sensor 3	fram			2
+	7,	//IR-sensor 4	höger			3
+	0,	//Tejpsensor 1	fram-vänster	4
+	4,	//Tejpsensor 2	bak-vänster		5
+	2,	//Tejpsensor 3	bak-höger		6
+	0,	//Tejpsensor 4	fram-höger		7
+	13,	//Avståndssensor				8
+	37,	//Träffdetektor					9
+	5,	//Liv							A
+	1,	//Kontrolläge					B
+	0	//TapeValues					C
 };
 
 uint8_t byteCount = 0;
@@ -134,7 +135,7 @@ ISR(INT0_vect){
 		PORTB &= ~_BV(PB3);
 		sensorData = SPI_MasterTransmit(0xF0); //Receive the sensor data
 		PORTB |= _BV(PB3);
-		//dataValues[sensor] = sensorData;
+		dataValues[sensor] = sensorData;
 		byteCount = 0;
 	}
 	
