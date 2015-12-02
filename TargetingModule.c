@@ -21,37 +21,59 @@ uint8_t byte = 0; //Keep track of which byte that is recieved
 int data = 0; //Data from gyro
 
 //SPI-variables
-const uint8_t MOVE_FORWARD_SLOW = 0x1A;
-const uint8_t TURN_LEFT_SLOW = 0x16;
-const uint8_t STOP = 0x10;
 uint8_t command = 0;
 uint8_t cnt = 0;
 uint8_t dataH = 0;
 uint8_t dataL = 0;
-uint8_t sensor = 0; //Which sensor sends data
-uint8_t sensorData = 0; //Data from sensor
+volatile uint8_t sensor = 0; //Which sensor sends data
+volatile uint8_t sensorData = 0; //Data from sensor
 
 // Kommunikation med datorn
 volatile uint8_t requestFlag = 0;	//flagga för att signalera om datorn frågat om ett värde
 volatile uint8_t dataAddress = 0;	//vilken "address" ligger värdet som datorn efterfrågat på
 
+//Robot commands
+const uint8_t MOVE_FORWARD_SLOW = 0x1A;
+const uint8_t MOVE_FORWARD_FAST = 0x1F;
+const uint8_t MOVE_BACK = 0x15;
+const uint8_t TURN_RIGHT_SLOW = 0x19;
+const uint8_t TURN_LEFT_SLOW = 0x16;
+const uint8_t STOP = 0x10;
+
+//Sensor Index
+const uint8_t TAPE_SENSOR_FRONT_LEFT = 0x04;
+const uint8_t TAPE_SENSOR_FRONT_RIGHT = 0x07;
+const uint8_t TAPE_SENSOR_BACK_LEFT = 0x05;
+const uint8_t TAPE_SENSOR_BACK_RIGHT = 0x06;
+
+const uint8_t IR_SENSOR_FRONT = 0x02;
+const uint8_t IR_SENSOR_RIGHT = 0x03;
+const uint8_t IR_SENSOR_BACK = 0x01;
+const uint8_t IR_SENSOR_LEFT = 0x00;
+
+const uint8_t DISTANCE_SENSOR = 0x08;
+const uint8_t HIT_DETECTOR = 0x09;
+const uint8_t TAPE_VALUES = 0x0C;
+
+uint8_t sensorInterruptFlag = 0;
+
 volatile uint8_t dataValues[13] = {	
-	1,	//IR-sensor 1	vänster			0
-	3,	//IR-sensor 2	bak				1
-	3,	//IR-sensor 3	fram			2
-	7,	//IR-sensor 4	höger			3
+	0,	//IR-sensor 1	vänster			0
+	0,	//IR-sensor 2	bak				1
+	0,	//IR-sensor 3	fram			2
+	0,	//IR-sensor 4	höger			3
 	0,	//Tejpsensor 1	fram-vänster	4
-	4,	//Tejpsensor 2	bak-vänster		5
-	2,	//Tejpsensor 3	bak-höger		6
+	0,	//Tejpsensor 2	bak-vänster		5
+	0,	//Tejpsensor 3	bak-höger		6
 	0,	//Tejpsensor 4	fram-höger		7
-	13,	//Avståndssensor				8
-	37,	//Träffdetektor					9
-	5,	//Liv							A
+	0,	//Avståndssensor				8
+	0,	//Träffdetektor					9
+	3,	//Liv							A
 	1,	//Kontrolläge					B
 	0	//TapeValues					C
 };
 
-uint8_t byteCount = 0;
+volatile uint8_t byteCount = 0;
 
 void SPI_MasterInit(void)
 {
@@ -85,12 +107,15 @@ void SPI_MasterInit(void)
 
 unsigned char SPI_MasterTransmit(char cData)
 {
-	
+	//cli();
+	//GICR &= ~_BV(INT0);
 	/* Start transmission */
 	SPDR = cData;
 	/* Wait for transmission complete */
 	while(!(SPSR & (1<<SPIF)))
 	;
+	//GICR |= _BV(INT0);
+	//sei();
 	return SPDR;
 }
 
@@ -122,6 +147,7 @@ ISR(TIMER1_COMPA_vect){
 ISR(INT0_vect){
 	
 	byteCount += 1;
+	/*byteCount += 1;
 	
 	//Sensor
 	if(byteCount == 1){
@@ -137,7 +163,7 @@ ISR(INT0_vect){
 		PORTB |= _BV(PB3);
 		dataValues[sensor] = sensorData;
 		byteCount = 0;
-	}
+	}*/
 	
 	/*PORTD |= _BV(PD6);
 	//Sensor
@@ -232,6 +258,20 @@ ISR(USART_RXC_vect)
 	requestFlag = 1;// sätt flagga att skicka saker
 }
 
+//Use this function to move the robot using one of the pre-defined commands
+void moveRobot(uint8_t move){
+	PORTB &= ~_BV(PB1);
+	SPI_MasterTransmit(move);
+	PORTB |= _BV(PB1);
+}
+
+void sensorRequest(uint8_t sensor){
+	_delay_ms(5);
+	SPI_MasterTransmit(sensor);
+	_delay_ms(2);
+	dataValues[sensor] = SPI_MasterTransmit(0);
+}
+
 int main(void)
 {	
 	
@@ -250,7 +290,7 @@ int main(void)
 	data += SPI_MasterTransmit(0x00);
 	PORTB |= _BV(PB4);
 	_delay_us(115);*/
-	
+	btTransmit(0);
     while(1)
     {		
 		/*if(sensorData == 1){
@@ -259,10 +299,46 @@ int main(void)
 			SPI_MasterTransmit(2);
 			PORTB = _BV(PB1);
 		}*/
+		
+		/*if(byteCount == 1){
+			for(uint8_t i = 0; i < 10; ++i){
+				
+				PORTB &= ~_BV(PB3);
+				sensor = SPI_MasterTransmit(0xFF); //Receive which sensor that wants to send data
+				PORTB |= _BV(PB3);
+			
+				while(byteCount < 2);
+				//Data
+				PORTB &= ~_BV(PB3);
+				sensorData = SPI_MasterTransmit(0xF0); //Receive the sensor data
+				PORTB |= _BV(PB3);
+				dataValues[sensor] = sensorData;
+				byteCount = 0;
+				dataValues[10] += 1;
+			} 
+			
+		}*/
+		sensorRequest(TAPE_SENSOR_BACK_LEFT);
+		
 		if(requestFlag == 1){
 			btTransmit(dataValues[dataAddress]);		//skicka efterfrågat värde till datorn
 			requestFlag = 0;	//nu har vi skickat
 		}
+		
+		//Start of AI program that should keep the robot within the boundaries of the tape track
+		
+		//Masking tapeValues so that we only get the front tape sensors
+		/*if(!(dataValues[TAPE_VALUES] & 0b1001)){ //If the front tape sensors read no tape, move forward
+			//moveRobot(MOVE_FORWARD_SLOW);
+			moveRobot(MOVE_BACK);
+		}
+		else if(!(dataValues[TAPE_VALUES] & 0b0110)){
+			moveRobot(MOVE_BACK);
+			}
+		else{
+			moveRobot(STOP);
+		}*/
+		
 		/*PORTB &= ~_BV(PB3);
 		SPI_MasterTransmit(0xF0);
 		PORTB |= _BV(PB3);*/

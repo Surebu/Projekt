@@ -17,6 +17,7 @@ volatile uint16_t distance = 0; // in cm
 volatile uint8_t IRSTOPFLAG = 0;
 uint8_t tapeThreshold = 128;
 uint8_t IRsignals[4];
+uint8_t analogTapeValues[4];
 uint8_t TapeValues;
 
 volatile uint8_t byteCount = 0; //Viktigt att den är volatile
@@ -35,6 +36,7 @@ const uint8_t IR_SENSOR_LEFT = 0x00;
 const uint8_t DISTANCE_SENSOR = 0x08;
 const uint8_t HIT_DETECTOR = 0x09;
 const uint8_t TAPE_VALUES = 0x0C;
+
 
 uint8_t hit = 0;
 
@@ -101,21 +103,17 @@ void SPI_init(){
 	SPCR |= _BV(SPE) | _BV(SPIE); //Set as slave, SPI-enable set and interrupts enabled
 }
 
-//Laddar data som ska skickas över SPIn
-void sendData(uint8_t data){
-	SPDR = data; //Load data to be sent
-	PORTB |= _BV(PB3);
-	//while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed, FUNKAR INTE
-	PORTB &= ~_BV(PB3);
-	while(byteCount < 1);
-	byteCount = 0;
-	PORTD &= 0x9F;
-}
-
 //Räknar hur många bytes vi har skickat över SPIn
 ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
-	//PORTD |= _BV(PD6);
-	byteCount += 1;
+	
+	//byteCount += 1;
+	PORTD |= _BV(PD6);
+	SPDR = analogTapeValues[1];
+	if(SPDR == TAPE_SENSOR_BACK_LEFT){
+		
+		
+	}
+	
 	//PORTD &= 0x9F;
 	//PORTD |= byteCount << 5;
 	//PORTD &= ~_BV(PD6);
@@ -156,30 +154,30 @@ void readTapeSensors(){
 	{
 		if (tapeNum == 0)
 		{			
-			sendData(TAPE_SENSOR_FRONT_LEFT);
-			sendData(adc_read(6));
-			adc_read(6);
+			//sendData(TAPE_SENSOR_FRONT_LEFT);
+			//sendData(adc_read(6));
+			analogTapeValues[tapeNum] = adc_read(6);
 			ADConvert(tapeNum);	
 		}
 		else if (tapeNum == 1)
 		{
-			sendData(TAPE_SENSOR_BACK_LEFT);
-			sendData(adc_read(7));
-			adc_read(7);
+			//sendData(TAPE_SENSOR_BACK_LEFT);
+			//sendData(adc_read(7));
+			analogTapeValues[tapeNum] = adc_read(7);
 			ADConvert(tapeNum);
 		}
 		else if (tapeNum == 2)
 		{
-			sendData(TAPE_SENSOR_BACK_RIGHT);
-			sendData(adc_read(5));
-			adc_read(5);		//måste användas om vi skickar Tapevalues som sendData
+			//sendData(TAPE_SENSOR_BACK_RIGHT);
+			//sendData(adc_read(5));
+			analogTapeValues[tapeNum] = adc_read(5);		//måste användas om vi skickar Tapevalues som sendData
 			ADConvert(tapeNum);
 		}
 		else if (tapeNum == 3)
 		{
-			sendData(TAPE_SENSOR_FRONT_RIGHT);
-			sendData(adc_read(4));
-			adc_read(4);
+			//sendData(TAPE_SENSOR_FRONT_RIGHT);
+			//sendData(adc_read(4));
+			analogTapeValues[tapeNum] = adc_read(4);
 			ADConvert(tapeNum);
 		}
 	}
@@ -255,6 +253,16 @@ void readIRSensors(){
 	PORTB |= _BV(PB2);	//disable mux x
 }
 
+//Laddar data som ska skickas över SPIn
+void sendData(uint8_t data){
+	SPDR = data; //Load data to be sent
+	PORTB |= _BV(PB3);
+	//while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed, FUNKAR INTE
+	PORTB &= ~_BV(PB3);
+	while(byteCount < 1);
+	byteCount = 0;
+	//PORTD &= 0x9F;
+}
 
 void outputValues(){
 	//PORTB &= 0x0F;		//Clear the port except the select bits to the MUX
@@ -267,25 +275,48 @@ void outputValues(){
 	//Distance sensor
 	//PORTB |= (distance << 3); //visar 1 cm för mycket
 	
+	/*PORTB |= _BV(PB3);
+	//while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed, FUNKAR INTE
+	PORTB &= ~_BV(PB3);*/
+	
 	for (uint8_t num = 0; num<4; num++)//Loop to send all IR-sensor values
 	{
+		
 		switch(num){
 			case 0:
+			
 			sendData(IR_SENSOR_LEFT);
 			sendData(IRsignals[num]);
+			
+			sendData(TAPE_SENSOR_FRONT_LEFT);
+			sendData(analogTapeValues[num]);
+			PORTD |= _BV(PD6);
 			break;
+			
 			case 1:
 			sendData(IR_SENSOR_BACK);
 			sendData(IRsignals[num]);
+			
+			sendData(TAPE_SENSOR_BACK_LEFT);
+			sendData(analogTapeValues[num]);
 			break;
+			
 			case 2:
 			sendData(IR_SENSOR_FRONT);
 			sendData(IRsignals[num]);
+			
+			sendData(TAPE_SENSOR_BACK_RIGHT);
+			sendData(analogTapeValues[num]);
 			break;
+			
 			case 3:
 			sendData(IR_SENSOR_RIGHT);
 			sendData(IRsignals[num]);
+			
+			sendData(TAPE_SENSOR_FRONT_RIGHT);
+			sendData(analogTapeValues[num]);
 			break;
+			
 			default:
 			sendData(0xFF);
 			sendData(0xFF);
@@ -313,6 +344,7 @@ int main(void)
 	initPorts();
 	SPI_init();
 	sei();
+	DDRD |= _BV(PD6);
 		
     while(1)
     {
@@ -323,7 +355,7 @@ int main(void)
 		triggerSignal();
 		//_delay_ms(20);
 		_delay_ms(10);
-		outputValues();
+		//outputValues();
 		//_delay_ms(10);
 		//check avstandssensor
     }
