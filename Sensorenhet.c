@@ -35,7 +35,6 @@ const uint8_t DISTANCE_SENSOR = 8;
 const uint8_t HIT_DETECTOR = 9;
 const uint8_t TAPE_VALUES = 10;
 
-
 uint8_t hit = 0;
 
 ISR(INT0_vect){
@@ -105,25 +104,6 @@ void SPI_init(){
 	SPCR |= _BV(SPE) | _BV(SPIE); //Set as slave, SPI-enable set and interrupts enabled
 }
 
-<<<<<<< HEAD
-=======
-//Räknar hur många bytes vi har skickat över SPIn
-ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
-	
-	//byteCount += 1;
-	PORTD |= _BV(PD6);
-	SPDR = analogTapeValues[1];
-	if(SPDR == TAPE_SENSOR_BACK_LEFT){
-		
-		
-	}
-	
-	//PORTD &= 0x9F;
-	//PORTD |= byteCount << 5;
-	//PORTD &= ~_BV(PD6);
-}
-
->>>>>>> origin/master
 //Triggersignal för att starta avståndssensorn
 void triggerSignal(){
 	PORTA &= ~_BV(PA2);
@@ -169,44 +149,22 @@ void readTapeSensors(){
 	for (uint8_t tapeNum = 0; tapeNum<4; tapeNum++)
 	{
 		if (tapeNum == 0)
-<<<<<<< HEAD
 		{
-=======
-		{			
-			//sendData(TAPE_SENSOR_FRONT_LEFT);
-			//sendData(adc_read(6));
->>>>>>> origin/master
 			analogTapeValues[tapeNum] = adc_read(6);
 			ADConvert(tapeNum);	
 		}
 		else if (tapeNum == 1)
 		{
-<<<<<<< HEAD
-=======
-			//sendData(TAPE_SENSOR_BACK_LEFT);
-			//sendData(adc_read(7));
->>>>>>> origin/master
 			analogTapeValues[tapeNum] = adc_read(7);
 			ADConvert(tapeNum);
 		}
 		else if (tapeNum == 2)
 		{
-<<<<<<< HEAD
 			analogTapeValues[tapeNum] = adc_read(5);		
-=======
-			//sendData(TAPE_SENSOR_BACK_RIGHT);
-			//sendData(adc_read(5));
-			analogTapeValues[tapeNum] = adc_read(5);		//måste användas om vi skickar Tapevalues som sendData
->>>>>>> origin/master
 			ADConvert(tapeNum);
 		}
 		else if (tapeNum == 3)
 		{
-<<<<<<< HEAD
-=======
-			//sendData(TAPE_SENSOR_FRONT_RIGHT);
-			//sendData(adc_read(4));
->>>>>>> origin/master
 			analogTapeValues[tapeNum] = adc_read(4);
 			ADConvert(tapeNum);
 		}
@@ -271,20 +229,7 @@ void readIRSensors(){
 	PORTB |= _BV(PB2);	//disable mux x
 }
 
-<<<<<<< HEAD
 void readLaserDetector(){
-=======
-//Laddar data som ska skickas över SPIn
-void sendData(uint8_t data){
-	SPDR = data; //Load data to be sent
-	PORTB |= _BV(PB3);
-	//while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed, FUNKAR INTE
-	PORTB &= ~_BV(PB3);
-	while(byteCount < 1);
-	byteCount = 0;
-	//PORTD &= 0x9F;
-}
->>>>>>> origin/master
 
 }
 
@@ -310,57 +255,8 @@ ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
 		SPDR = analogTapeValues[0];
 	}
 	
-<<<<<<< HEAD
 	else if (SPDR == TAPE_SENSOR_BACK_LEFT){
 		SPDR = analogTapeValues[1];
-=======
-	/*PORTB |= _BV(PB3);
-	//while(!(SPSR & (1<<SPIF))); //Wait for transfer to be completed, FUNKAR INTE
-	PORTB &= ~_BV(PB3);*/
-	
-	for (uint8_t num = 0; num<4; num++)//Loop to send all IR-sensor values
-	{
-		
-		switch(num){
-			case 0:
-			
-			sendData(IR_SENSOR_LEFT);
-			sendData(IRsignals[num]);
-			
-			sendData(TAPE_SENSOR_FRONT_LEFT);
-			sendData(analogTapeValues[num]);
-			PORTD |= _BV(PD6);
-			break;
-			
-			case 1:
-			sendData(IR_SENSOR_BACK);
-			sendData(IRsignals[num]);
-			
-			sendData(TAPE_SENSOR_BACK_LEFT);
-			sendData(analogTapeValues[num]);
-			break;
-			
-			case 2:
-			sendData(IR_SENSOR_FRONT);
-			sendData(IRsignals[num]);
-			
-			sendData(TAPE_SENSOR_BACK_RIGHT);
-			sendData(analogTapeValues[num]);
-			break;
-			
-			case 3:
-			sendData(IR_SENSOR_RIGHT);
-			sendData(IRsignals[num]);
-			
-			sendData(TAPE_SENSOR_FRONT_RIGHT);
-			sendData(analogTapeValues[num]);
-			break;
-			
-			default:
-			sendData(0xFF);
-			sendData(0xFF);
-		}
->>>>>>> origin/master
 	}
 	
 	else if (SPDR == TAPE_SENSOR_BACK_RIGHT){
@@ -396,12 +292,7 @@ int main(void)
 	initPorts();
 	SPI_init();
 	sei();
-<<<<<<< HEAD
 	DDRD |= _BV(PD4) | _BV(PD5);	
-=======
-	DDRD |= _BV(PD6);
-		
->>>>>>> origin/master
     while(1)
     {
 		//readLaserDetector();
@@ -410,11 +301,5 @@ int main(void)
 		initDistanceSensor();
 		triggerSignal();
 		_delay_ms(10);
-<<<<<<< HEAD
-=======
-		//outputValues();
-		//_delay_ms(10);
-		//check avstandssensor
->>>>>>> origin/master
     }
 }
