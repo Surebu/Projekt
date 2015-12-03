@@ -19,9 +19,17 @@ volatile uint8_t dataAddress = 0;	//vilken "address" ligger värdet som datorn ef
 volatile uint8_t sensor = 0; //Which sensor sends data
 volatile uint8_t sensorData = 0; //Data from sensor
 
-const uint8_t RETIEVABLE_SENSOR_DATA = 11;
+const uint8_t RETRIEVABLE_SENSOR_DATA = 10;
 
-volatile uint8_t dataValues[13] = {
+//Robot commands
+const uint8_t MOVE_FORWARD_SLOW = 0x1A;
+const uint8_t MOVE_FORWARD_FAST = 0x1F;
+const uint8_t MOVE_BACK = 0x15;
+const uint8_t TURN_RIGHT_SLOW = 0x19;
+const uint8_t TURN_LEFT_SLOW = 0x16;
+const uint8_t STOP = 0x10;
+
+volatile uint8_t dataValues[14] = {
 	1,	//IR-sensor 1	vänster
 	3,	//IR-sensor 2	bak
 	3,	//IR-sensor 3	fram
@@ -34,7 +42,8 @@ volatile uint8_t dataValues[13] = {
 	37,	//Träffdetektor
 	0,	//Tape values
 	7,	//Liv
-	1	//Kontrolläge
+	1,	//Kontrolläge
+	0   //latest_move
 };
 
 const uint8_t IR_SENSOR_LEFT = 0;
@@ -49,7 +58,9 @@ const uint8_t TAPE_SENSOR_FRONT_RIGHT = 7;
 
 const uint8_t DISTANCE_SENSOR = 8;
 const uint8_t HIT_DETECTOR = 9;
-const uint8_t TAPE_VALUES =  12;
+const uint8_t TAPE_VALUES =  10;
+
+uint8_t tapeThreshold = 60;
 
 //----------------------------------BT----------------------------------
 //----------------------------------------------------------------------
@@ -131,6 +142,32 @@ unsigned char SPI_MasterTransmit(char cData)
 	return SPDR;
 }
 
+//---------------------------------------Commands----------------------
+//---------------------------------------------------------------------
+//Use this function to move the robot using one of the pre-defined commands
+void moveRobot(uint8_t move){
+	PORTB &= ~_BV(PB1);
+	SPI_MasterTransmit(move);
+	PORTB |= _BV(PB1);
+	
+	dataValues[13] = move;
+}
+
+//---------------------------------------------------------------------
+//---------------------------------------------------------------------
+
+//konverterar sensorvärdet och lagrar det i Tapevalues
+void ADConvert(){
+	for(uint8_t i = 4; i < 8; ++i){
+		if (dataValues[i] > tapeThreshold)
+		{
+			dataValues[TAPE_VALUES] |= _BV(i-4);
+		}
+		else{
+			dataValues[TAPE_VALUES] &= ~_BV(i-4);
+		}
+	}
+}
 
 int main(void)
 {
@@ -138,6 +175,10 @@ int main(void)
 	btInit();
 	sei();
 	btTransmit(0);
+	
+	uint8_t frontTapeValues = 0;
+	uint8_t backTapeValues = 0;
+	
     while(1)
     {
 		
@@ -148,25 +189,29 @@ int main(void)
 			btTransmit(data);		//skicka efterfrågat värde till datorn
 			requestFlag = 0;	//nu har vi skickat
 		}
-/*
-		PORTB &= ~_BV(PB3);
-		SPI_MasterTransmit(0xC);
-		PORTB |= _BV(PB3);
-		_delay_us(5);
-		PORTB &= ~_BV(PB3);
-		dataValues[0xC] = SPI_MasterTransmit(0xAA);
-		PORTB |= _BV(PB3);
-		_delay_us(5);
-*/		
-		for(uint8_t i = 0; i < RETIEVABLE_SENSOR_DATA; ++i){
+			
+		for(uint8_t i = 0; i < RETRIEVABLE_SENSOR_DATA; ++i){
 			PORTB &= ~_BV(PB3);
 			SPI_MasterTransmit(i);
 			PORTB |= _BV(PB3);
-			_delay_us(5);
+			_delay_us(3);
 			PORTB &= ~_BV(PB3);
 			dataValues[i] = SPI_MasterTransmit(0xAA);
 			PORTB |= _BV(PB3);
-			_delay_us(5);
-		}		
+			_delay_us(3);		
+		}
+		ADConvert();	
+				
+		//Start of AI program that should keep the robot within the boundaries of the tape track
+		
+		frontTapeValues = dataValues[TAPE_VALUES] & 0x09;
+		backTapeValues = dataValues[TAPE_VALUES] & 0x06;
+		
+		if(frontTapeValues == 0x00){ //If the front tape sensors read no tape, move forward
+			moveRobot(MOVE_FORWARD_SLOW);
+		}
+		else{
+			moveRobot(STOP);
+		}	
     }
 }

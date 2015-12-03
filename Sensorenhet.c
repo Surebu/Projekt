@@ -8,14 +8,15 @@
 
 #define F_CPU 16000000UL
 #define PA1HIGH   ((PINA & (1<<PA1)))
+#define ADCONVERTERFREE !(ADCSRA & (1<<ADSC))
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdio.h>
 #include <avr/interrupt.h>
 
 volatile uint16_t distance = 0; // in cm
+volatile uint8_t distanceSensorWait = 0;
 volatile uint8_t IRSTOPFLAG = 0;
-uint8_t tapeThreshold = 128;
 uint8_t IRsignals[4];
 uint8_t analogTapeValues[4];
 uint8_t TapeValues;
@@ -37,37 +38,44 @@ const uint8_t TAPE_VALUES = 10;
 
 uint8_t hit = 0;
 
-ISR(INT0_vect){
-	distance = 0;			// set dist to 0
-	TCNT1 = 0;
-	while(PA1HIGH)
-	{
-		if(TCNT1 > 927){	//16mhz clock => 16 pulses/us => (16*58)-1 = distance in cm
-			TCNT1 = 0;		//reset timer
-			distance++;		//+1cm
-		}
-	}
+//AD omvandling
+volatile uint8_t requestedTapeSens = 0;
+const uint8_t TAPE_NUMS[4] = {6,7,5,4};
 
-	//sendData(DISTANCE_SENSOR, distance);
-	//sendData(DISTANCE_SENSOR);
-	//sendData(distance); 
+
+ISR(INT0_vect){	//initierar räkning av avstånd med hjälp av timers
+	distance = 0;			// set dist to 0
+	TCCR2 |= _BV(WGM21) | _BV(CS21) | _BV(CS20);	//CTC, 32prescaler
+	OCR2 = 29;				// http://eleccelerator.com/avr-timer-calculator/ 0.0000058s
+}
+
+ISR(TIMER2_COMP_vect){
+	if(PA1HIGH && !distanceSensorWait) distance++;	//Så länge echo är hög och vi inte väntar öka avstånd
+	else if(!distanceSensorWait) {	//om echo inte hög och vi inte väntar, måste vi starta väntetid(10ms)
+		distanceSensorWait = 1;
+		TCCR2 = 0;
+		TCCR2 = _BV(WGM21) | _BV(CS22) | _BV(CS21) | _BV(CS20); //CTC, 1024prescaler
+		OCR2 = 157;		//10ms  http://eleccelerator.com/avr-timer-calculator/	
+	}
+	else if(distanceSensorWait){	//när vi väntat färdigt kan vi använda avståndssensorn igen
+		distanceSensorWait = 0;
+		TCCR2 = 0;
+	}
 }
 
 ISR(TIMER1_COMPA_vect){
 	IRSTOPFLAG = 1;
 }
+
 void enableInterrupts(){
 	GICR = 1<<INT0;					// Enable INT0
 	MCUCR = 1<<ISC01 | 1<<ISC00;	// Trigger INT0 on rising edge	
-	TIMSK |= _BV(OCIE1A);			//enable timer interrupts
+	TIMSK |= _BV(OCIE1A) | _BV(OCIE2);//enable timer interrupts
 	OCR1A = 7000;					//64*x/16000000 = 28*10^-3 => x = 7000
 }
 void initPorts(){
-	//ALLA PORTAR
-	//DDRB |= _BV(PB0) | _BV(PB1) | _BV(PB2) | _BV(PB3);	//muxenable , muxmuxmux
 	DDRA |= _BV(PA2);									//PA2 triggersignal dist.
-	DDRB = 0xFF;// _BV(PB4) | _BV(PB5) | _BV(PB6) | _BV(PB7); //tests
-	
+	DDRB = 0xFF;	//test
 }
 void initIRSensors(){
 	TCCR0 |= _BV(CS02);	//prescaler 256
@@ -79,10 +87,6 @@ void initIRSensors(){
 	TCNT0 = 0;	
 }
 
-void initDistanceSensor(){
-	TCCR1B = 0;	
-	TCCR1B |= _BV(CS10);	//start 16bit timer
-}
 
 void initADConverter(){
 	ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0); // Set ADC prescalar to 128 - 125KHz sample rate @ 16MHz
@@ -94,7 +98,8 @@ void initADConverter(){
 	
 	ADCSRA |= (0 << ADATE);  // Set ADC to single Mode
 	ADCSRA |= (1 << ADEN);  // Enable ADC
-	ADCSRA |= (1 << ADSC);  // Start A2D Conversions	
+	ADCSRA |= (1 << ADSC);  // Start A2D Conversions
+	ADCSRA |= (1 << ADIE);	// AD interrupt	
 }
 
 void SPI_init(){
@@ -113,8 +118,8 @@ void triggerSignal(){
 	PORTA &= ~_BV(PA2);	//End the signal
 }
 
-//Läser av tejpsensor nr ch
-uint8_t adc_read(uint8_t ch)
+//Startar adomvandling av tejpsensor nr ch
+void adc_read(uint8_t ch)
 {
 	// select the corresponding channel 0~7
 	// ANDing with ’7? will always keep the value
@@ -125,50 +130,12 @@ uint8_t adc_read(uint8_t ch)
 	// start single convertion
 	// write ’1? to ADSC
 	ADCSRA |= (1<<ADSC);
-	
-	// wait for conversion to complete
-	// ADSC becomes ’0? again
-	// till then, run loop continuously
-	while(ADCSRA & (1<<ADSC));
-	
-	return ADCH;
 }
 
-//konverterar sensorvärdet och lagrar det i Tapevalues
-void ADConvert(uint8_t tapeNum){
-	if (ADCH < tapeThreshold)
-	{
-		TapeValues |= _BV(tapeNum);
-	}
-	else{
-		TapeValues &= ~_BV(tapeNum);
-	}
-}
-
-void readTapeSensors(){
-	for (uint8_t tapeNum = 0; tapeNum<4; tapeNum++)
-	{
-		if (tapeNum == 0)
-		{
-			analogTapeValues[tapeNum] = adc_read(6);
-			ADConvert(tapeNum);	
-		}
-		else if (tapeNum == 1)
-		{
-			analogTapeValues[tapeNum] = adc_read(7);
-			ADConvert(tapeNum);
-		}
-		else if (tapeNum == 2)
-		{
-			analogTapeValues[tapeNum] = adc_read(5);		
-			ADConvert(tapeNum);
-		}
-		else if (tapeNum == 3)
-		{
-			analogTapeValues[tapeNum] = adc_read(4);
-			ADConvert(tapeNum);
-		}
-	}
+ISR(ADC_vect){//när adomvandling färdig
+	analogTapeValues[requestedTapeSens] = ADCH;	//spara värdet
+	if(requestedTapeSens < 3) requestedTapeSens++;	//och säg att vi vill kolla nästa sensor eller börja om
+	else requestedTapeSens = 0; 
 }
 
 void readIRSensor(uint8_t num){
@@ -295,11 +262,9 @@ int main(void)
 	DDRD |= _BV(PD4) | _BV(PD5);	
     while(1)
     {
+		if(ADCONVERTERFREE) adc_read(TAPE_NUMS[requestedTapeSens]);	//om vi inte adomvandlar något, starta nästa
 		//readLaserDetector();
-		readIRSensors();
-		readTapeSensors();
-		initDistanceSensor();
-		triggerSignal();
-		_delay_ms(10);
+		//readIRSensors();
+		if(!(distanceSensorWait || PA1HIGH)) triggerSignal();	//Om vi inte väntar eller echo är hög så kan vi göra en ny trigger-signal
     }
 }
