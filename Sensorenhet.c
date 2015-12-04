@@ -262,7 +262,13 @@ int main(void)
 	DDRD |= _BV(PD4) | _BV(PD5);	
     while(1)
     {
-		if(ADCONVERTERFREE) adc_read(TAPE_NUMS[requestedTapeSens]);	//om vi inte adomvandlar något, starta nästa
+		if(ADCONVERTERFREE){
+			if(requestedTapeSens == 0){
+				PORTD |= _BV(PD5);
+				PORTD &= ~_BV(PD5);
+			}
+			 adc_read(TAPE_NUMS[requestedTapeSens]);	//om vi inte adomvandlar något, starta nästa
+		}
 		//readLaserDetector();
 		//readIRSensors();
 		if(!(distanceSensorWait || PA1HIGH)) triggerSignal();	//Om vi inte väntar eller echo är hög så kan vi göra en ny trigger-signal

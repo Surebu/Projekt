@@ -30,20 +30,20 @@ const uint8_t TURN_LEFT_SLOW = 0x16;
 const uint8_t STOP = 0x10;
 
 volatile uint8_t dataValues[14] = {
-	1,	//IR-sensor 1	vänster
-	3,	//IR-sensor 2	bak
-	3,	//IR-sensor 3	fram
-	7,	//IR-sensor 4	höger
-	0,	//Tejpsensor 1	fram-vänster
-	4,	//Tejpsensor 2	bak-vänster
-	2,	//Tejpsensor 3	bak-höger
-	0,	//Tejpsensor 4	fram-höger
-	13,	//Avståndssensor
-	37,	//Träffdetektor
-	0,	//Tape values
-	7,	//Liv
-	1,	//Kontrolläge
-	0   //latest_move
+	1,	//IR-sensor 1	vänster			0
+	3,	//IR-sensor 2	bak	§			1
+	3,	//IR-sensor 3	fram			2
+	7,	//IR-sensor 4	höger			3
+	0,	//Tejpsensor 1	fram-vänster	4
+	4,	//Tejpsensor 2	bak-vänster		5
+	2,	//Tejpsensor 3	bak-höger		6
+	0,	//Tejpsensor 4	fram-höger		7
+	13,	//Avståndssensor				8
+	37,	//Träffdetektor					9
+	0,	//Tape values					A
+	7,	//Liv							B
+	1,	//Kontrolläge					C
+	0   //latest_move					D
 };
 
 const uint8_t IR_SENSOR_LEFT = 0;
@@ -60,8 +60,10 @@ const uint8_t DISTANCE_SENSOR = 8;
 const uint8_t HIT_DETECTOR = 9;
 const uint8_t TAPE_VALUES =  10;
 
-uint8_t tapeThreshold = 60;
+uint8_t tapeThreshold = 120;
 
+volatile uint8_t backFlag = 0;
+volatile uint8_t turnFlag = 0;
 //----------------------------------BT----------------------------------
 //----------------------------------------------------------------------
 
@@ -128,7 +130,6 @@ void SPI_MasterInit(void)
 	MCUCR = _BV(ISC01) | _BV(ISC00);	// Trigger INT0 on rising edge
 	GICR = _BV(INT0);
 	
-	DDRD |= _BV(PD6);
 }
 
 unsigned char SPI_MasterTransmit(char cData)
@@ -153,9 +154,31 @@ void moveRobot(uint8_t move){
 	dataValues[13] = move;
 }
 
+//--------------------------------Timer--------------------------------------
+//---------------------------------------------------------------------------
+
+void timer_init(){
+	TCCR1B |= _BV(WGM12) | _BV(CS10) | _BV(CS12); //Set CTC with prescaling 1024
+	TIMSK |= _BV(OCIE1A); //Enable interrupt on compare match, compare register 1A
+	OCR1A = 15625; //Roughly 1s, calculated with prescaling of 1024 using the following formula: 1 = (1024*x)/(16*10^6)
+}
+
+ISR(TIMER1_COMPA_vect){
+	
+	if(backFlag == 1){
+		backFlag = 0;
+		turnFlag = 1;
+	}else if(turnFlag == 1){		
+		turnFlag = 0;
+		TCCR1B = 0;
+	}
+	
+}
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
+//---------------------------------------------------------------------
+//---------------------------------------------------------------------
 //konverterar sensorvärdet och lagrar det i Tapevalues
 void ADConvert(){
 	for(uint8_t i = 4; i < 8; ++i){
@@ -169,6 +192,35 @@ void ADConvert(){
 	}
 }
 
+//Gets all the sensor values from sensorenheten via the SPI-bus
+void getSensorValues(){
+	for(uint8_t i = 0; i < RETRIEVABLE_SENSOR_DATA; ++i){
+		
+		PORTB &= ~_BV(PB3);
+		SPI_MasterTransmit(i);
+		PORTB |= _BV(PB3);
+		_delay_us(3);
+		
+		PORTB &= ~_BV(PB3);
+		dataValues[i] = SPI_MasterTransmit(0xAA);
+		PORTB |= _BV(PB3);
+		_delay_us(3);
+	}
+	
+	ADConvert();
+}
+
+//Responds to the request flag sent by the computer and sends back the relevant data
+void BT_SensorValues(){
+	if(requestFlag == 1){
+		cli();
+		uint8_t data = dataValues[dataAddress];
+		sei();
+		btTransmit(data);		//skicka efterfrågat värde till datorn
+		requestFlag = 0;	//nu har vi skickat
+	}
+}
+
 int main(void)
 {
 	SPI_MasterInit();
@@ -176,42 +228,54 @@ int main(void)
 	sei();
 	btTransmit(0);
 	
+	DDRD |= _BV(PD5);
+	DDRD |= _BV(PD4);
+	
 	uint8_t frontTapeValues = 0;
 	uint8_t backTapeValues = 0;
+	uint8_t frontLeftTape = 0;
+	uint8_t frontRightTape = 0;
+	uint8_t leftOrRight = 0;
 	
     while(1)
     {
-		
-		if(requestFlag == 1){
-			cli();
-			uint8_t data = dataValues[dataAddress];
-			sei();
-			btTransmit(data);		//skicka efterfrågat värde till datorn
-			requestFlag = 0;	//nu har vi skickat
-		}
-			
-		for(uint8_t i = 0; i < RETRIEVABLE_SENSOR_DATA; ++i){
-			PORTB &= ~_BV(PB3);
-			SPI_MasterTransmit(i);
-			PORTB |= _BV(PB3);
-			_delay_us(3);
-			PORTB &= ~_BV(PB3);
-			dataValues[i] = SPI_MasterTransmit(0xAA);
-			PORTB |= _BV(PB3);
-			_delay_us(3);		
-		}
-		ADConvert();	
+	
+		BT_SensorValues();
+		getSensorValues();
 				
 		//Start of AI program that should keep the robot within the boundaries of the tape track
 		
+		//Mutexlock, clisei-senpai!!!!!
+		cli();
 		frontTapeValues = dataValues[TAPE_VALUES] & 0x09;
-		backTapeValues = dataValues[TAPE_VALUES] & 0x06;
+		sei();
 		
-		if(frontTapeValues == 0x00){ //If the front tape sensors read no tape, move forward
+		frontLeftTape = frontTapeValues & 0x01;
+		frontRightTape = frontTapeValues & 0x08;
+		/*if(backFlag == 1){
+			moveRobot(STOP);
+		}*/
+		if(frontLeftTape != 0){
+			leftOrRight = 0;
+			backFlag = 1;
+			moveRobot(MOVE_BACK);
+			timer_init();
+		}
+		else if(frontRightTape != 0){
+			leftOrRight = 1;
+			backFlag = 1;
+			moveRobot(MOVE_BACK);
+			timer_init();
+		}
+		else if(turnFlag == 1){
+			if(leftOrRight == 0){
+				moveRobot(TURN_LEFT_SLOW);
+			}else if(leftOrRight == 1){
+				moveRobot(TURN_RIGHT_SLOW);
+			}		
+		}
+		else if ((frontTapeValues == 0x00) && (backFlag == 0) && (turnFlag == 0)){
 			moveRobot(MOVE_FORWARD_SLOW);
 		}
-		else{
-			moveRobot(STOP);
-		}	
     }
 }

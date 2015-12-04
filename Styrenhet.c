@@ -192,9 +192,7 @@ ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
 //-----------------------------------------------------------------------
 void shootLaser(){
 	PORTD |= _BV(PD6);
-	_delay_ms(500);
 	PORTD &= ~_BV(PD6);	
-	_delay_ms(500);
 }
 
 void activateLaserDetector(){
@@ -220,7 +218,7 @@ int main(void)
 	
 	while(1)
 	{
-		shootLaser();
+		//shootLaser();
 		if(cmdH = 1){
 			setMotors(cmdL);
 		}else if(cmdH = 2){
