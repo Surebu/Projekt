@@ -20,7 +20,7 @@ const uint8_t FAST = 128;
 //Variables for compare-interrupts in 8-bit timer 2, values derived from time(s)/(1/(clk/prescaling))
 const uint8_t STARTBIT = 37; //2.4 ms
 const uint8_t LOGICONE = 19; //1.2 ms
-const uint8_t TICK = 9; //0.6 ms
+const uint8_t LOGICZERO = 9; //0.6 ms
 volatile uint8_t IRState = 0; //0 = "startbit", 1 = "pause"...........
 
 //Intstruction byte for commands from målsökningsenhet
