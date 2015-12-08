@@ -24,19 +24,21 @@ const uint8_t RETRIEVABLE_SENSOR_DATA = 10;
 //Tapethresholds
 const uint8_t tapeThreshold = 120;
 
-volatile uint8_t tapeThresholdFL = tapeThreshold;
-volatile uint8_t tapeThresholdFR = tapeThreshold;
-volatile uint8_t tapeThresholdBL = tapeThreshold;
-volatile uint8_t tapeThresholdBR = tapeThreshold;
+volatile uint8_t tapeThresholdFL = 0;
+volatile uint8_t tapeThresholdFR = 0;
+volatile uint8_t tapeThresholdBL = 0;
+volatile uint8_t tapeThresholdBR = 0;
 
-const uint8_t thresholdOffset = 5; 
+const uint8_t thresholdOffset = 10; 
+
+volatile uint8_t calibrating = 0;
 
 //Robot commands
 const uint8_t MOVE_FORWARD_SLOW = 0x1A;
 const uint8_t MOVE_FORWARD_FAST = 0x1F;
 const uint8_t MOVE_BACK = 0x15;
-const uint8_t TURN_RIGHT_SLOW = 0x19;
-const uint8_t TURN_LEFT_SLOW = 0x16;
+const uint8_t TURN_RIGHT = 0x1D;
+const uint8_t TURN_LEFT = 0x17;
 const uint8_t STOP = 0x10;
 
 volatile uint8_t dataValues[14] = {
@@ -72,9 +74,9 @@ const uint8_t TAPE_VALUES =  10;
 
 volatile uint8_t backFlag = 0;
 volatile uint8_t turnFlag = 0;
+
 //----------------------------------BT----------------------------------
 //----------------------------------------------------------------------
-
 void btInit(void)
 {
 	/* Set baud rate */
@@ -112,7 +114,8 @@ ISR(USART_RXC_vect)
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
-
+//---------------------------------------SPI---------------------------
+//---------------------------------------------------------------------
 void SPI_MasterInit(void)
 {
 	/* Set MOSI and SCK output, all others input */
@@ -150,17 +153,23 @@ unsigned char SPI_MasterTransmit(char cData)
 	;
 	return SPDR;
 }
+//---------------------------------------------------------------------
+//---------------------------------------------------------------------
 
 //---------------------------------------Commands----------------------
 //---------------------------------------------------------------------
 //Use this function to move the robot using one of the pre-defined commands
 void moveRobot(uint8_t move){
-	PORTB &= ~_BV(PB1);
-	SPI_MasterTransmit(move);
-	PORTB |= _BV(PB1);
 	
+	if(calibrating >= 2){
+		PORTB &= ~_BV(PB1);
+		SPI_MasterTransmit(move);
+		PORTB |= _BV(PB1);
+	}
 	dataValues[13] = move;
 }
+//---------------------------------------------------------------------
+//---------------------------------------------------------------------
 
 //--------------------------------Timer--------------------------------------
 //---------------------------------------------------------------------------
@@ -185,8 +194,8 @@ ISR(TIMER1_COMPA_vect){
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
-//--------------------------------Tape threshold calibrating--------------------------------------
-//------------------------------------------------------------------------------------------------
+//--------------------------------Tape threshold calibrating------------
+//----------------------------------------------------------------------
 void interruptINT1_init(){
 	
 	MCUCR = _BV(ISC11) | _BV(ISC10);	// Trigger INT1 on rising edge
@@ -195,12 +204,20 @@ void interruptINT1_init(){
 
 //Interrupt that sets the value for each of the tapesensor's thresholds
 ISR(INT1_vect){
-	tapeThresholdBL = (dataValues[TAPE_SENSOR_BACK_LEFT] - thresholdOffset);
-	tapeThresholdBR = (dataValues[TAPE_SENSOR_BACK_RIGHT] - thresholdOffset;
-	tapeThresholdFL = (dataValues[TAPE_SENSOR_FRONT_LEFT] - thresholdOffset);
-	tapeThresholdFR = (dataValues[TAPE_SENSOR_FRONT_RIGHT] - thresholdOffset);
+	if(calibrating == 0){
+		tapeThresholdBL = (dataValues[TAPE_SENSOR_BACK_LEFT] - thresholdOffset);
+		tapeThresholdBR = (dataValues[TAPE_SENSOR_BACK_RIGHT] - thresholdOffset);
+		tapeThresholdFL = (dataValues[TAPE_SENSOR_FRONT_LEFT] - thresholdOffset);
+		tapeThresholdFR = (dataValues[TAPE_SENSOR_FRONT_RIGHT] - thresholdOffset);
+		
+		dataValues[1] = tapeThresholdBL;
+		dataValues[2] = tapeThresholdBR;
+		dataValues[0] = tapeThresholdFL;
+		dataValues[3] = tapeThresholdFR;
+	}
+	
+	calibrating += 1;
 }
-
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
@@ -242,19 +259,20 @@ void ADConvert(){
 
 //Gets all the sensor values from sensorenheten via the SPI-bus
 void getSensorValues(){
-	for(uint8_t i = 0; i < RETRIEVABLE_SENSOR_DATA; ++i){
+	for(uint8_t i = 4; i < RETRIEVABLE_SENSOR_DATA; ++i){
 		
 		PORTB &= ~_BV(PB3);
 		SPI_MasterTransmit(i);
 		PORTB |= _BV(PB3);
-		_delay_us(3);
+		_delay_us(5);
 		
-		PORTB &= ~_BV(PB3);
+		
+		PORTB &= ~_BV(PB3);	
 		dataValues[i] = SPI_MasterTransmit(0xAA);
 		PORTB |= _BV(PB3);
-		_delay_us(3);
+		_delay_us(5);
+		
 	}
-	
 	ADConvert();
 }
 
@@ -269,22 +287,30 @@ void BT_SensorValues(){
 	}
 }
 
+//Loops until the tape thresholds have been calibrated
+void calibrateLoop(){
+	
+	while(calibrating == 1);
+}
+
 int main(void)
 {
 	SPI_MasterInit();
 	btInit();
 	interruptINT1_init();
-	sei();
-	btTransmit(0);
-	
+		
 	DDRD |= _BV(PD5);
-	DDRD |= _BV(PD4);
-	
+	DDRD |= _BV(PD4);	
 	uint8_t frontTapeValues = 0;
 	uint8_t backTapeValues = 0;
 	uint8_t frontLeftTape = 0;
 	uint8_t frontRightTape = 0;
 	uint8_t leftOrRight = 0;
+	
+	//getSensorValues();
+	sei();
+	//calibrateLoop();
+	btTransmit(0);
 	
     while(1)
     {
@@ -318,13 +344,13 @@ int main(void)
 		}
 		else if(turnFlag == 1){
 			if(leftOrRight == 0){
-				moveRobot(TURN_LEFT_SLOW);
+				moveRobot(TURN_LEFT);
 			}else if(leftOrRight == 1){
-				moveRobot(TURN_RIGHT_SLOW);
+				moveRobot(TURN_RIGHT);
 			}		
 		}
 		else if ((frontTapeValues == 0x00) && (backFlag == 0) && (turnFlag == 0)){
-			moveRobot(MOVE_FORWARD_SLOW);
+			moveRobot(MOVE_FORWARD_FAST);
 		}
     }
 }
