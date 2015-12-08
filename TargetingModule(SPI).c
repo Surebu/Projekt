@@ -16,12 +16,7 @@
 volatile uint8_t requestFlag = 0;	//flagga för att signalera om datorn frågat om ett värde
 volatile uint8_t dataAddress = 0;	//vilken "address" ligger värdet som datorn efterfrågat på
 
-volatile uint8_t sensor = 0; //Which sensor sends data
-volatile uint8_t sensorData = 0; //Data from sensor
-
-const uint8_t RETRIEVABLE_SENSOR_DATA = 10;
-
-//Tapethresholds
+//------------------------Tapethresholds and calibrating----------------------------
 const uint8_t tapeThreshold = 120;
 
 volatile uint8_t tapeThresholdFL = 0;
@@ -29,21 +24,24 @@ volatile uint8_t tapeThresholdFR = 0;
 volatile uint8_t tapeThresholdBL = 0;
 volatile uint8_t tapeThresholdBR = 0;
 
-const uint8_t thresholdOffset = 10; 
+const uint8_t thresholdOffset = 20; //Offset to give the robot some added sensitivity in detecting tape
 
-volatile uint8_t calibrating = 0;
+volatile uint8_t calibrating = 0; //1 if the robot is calibrating the tape thresholds
+//-----------------------------------------------------------------------------
 
-//Robot commands
+//-------------------------Robot commands-------------------------------------------
 const uint8_t MOVE_FORWARD_SLOW = 0x1A;
 const uint8_t MOVE_FORWARD_FAST = 0x1F;
 const uint8_t MOVE_BACK = 0x15;
 const uint8_t TURN_RIGHT = 0x1D;
 const uint8_t TURN_LEFT = 0x17;
 const uint8_t STOP = 0x10;
+//------------------------------------------------------------------------------------
 
+//-------------------Sensor data and index constants----------------------------------
 volatile uint8_t dataValues[14] = {
 	1,	//IR-sensor 1	vänster			0
-	3,	//IR-sensor 2	bak	§			1
+	3,	//IR-sensor 2	bak				1
 	3,	//IR-sensor 3	fram			2
 	7,	//IR-sensor 4	höger			3
 	0,	//Tejpsensor 1	fram-vänster	4
@@ -58,6 +56,12 @@ volatile uint8_t dataValues[14] = {
 	0   //latest_move					D
 };
 
+const uint8_t RETRIEVABLE_SENSOR_DATA = 10; //Number of sensors giving data
+
+volatile uint8_t sensor = 0; //Which sensor sends data
+volatile uint8_t sensorData = 0; //Data from sensor
+
+//Index constants to different sensor values in dataValues
 const uint8_t IR_SENSOR_LEFT = 0;
 const uint8_t IR_SENSOR_BACK = 1;
 const uint8_t IR_SENSOR_FRONT = 2;
@@ -71,9 +75,22 @@ const uint8_t TAPE_SENSOR_FRONT_RIGHT = 7;
 const uint8_t DISTANCE_SENSOR = 8;
 const uint8_t HIT_DETECTOR = 9;
 const uint8_t TAPE_VALUES =  10;
+//----------------------------------------------------------------------------------------
 
-volatile uint8_t backFlag = 0;
-volatile uint8_t turnFlag = 0;
+//--------Sensor-control "booleans" to determine behavior the of robot---------------------
+uint8_t distanceValue = 0;
+uint8_t frontTapeValues = 0;
+uint8_t frontLeftTape = 0;
+uint8_t frontRightTape = 0;
+uint8_t leftOrRight = 0; //If 0 turn left, 1 turn right
+//-------------------------------------------------------------------------------------------
+
+//------------------------------Course-correction vairables--------------------------------
+//volatile uint8_t backFlag = 0;
+//volatile uint8_t turnFlag = 0;
+volatile uint8_t correctingCourse = 0; //1 if the robot is correcting its course
+volatile uint8_t correctCourseStep = 0; //Which step the robot is on in its course-correcting
+//-------------------------------------------------------------------------------------------
 
 //----------------------------------BT----------------------------------
 //----------------------------------------------------------------------
@@ -104,6 +121,17 @@ unsigned char btReceive()
 	while (!(UCSRA & _BV(RXC)));
 	/* Get and return received data from buffer */
 	return UDR;
+}
+
+//Responds to the request flag sent by the computer and sends back the relevant data
+void BT_SensorValues(){
+	if(requestFlag == 1){
+		cli();
+		uint8_t data = dataValues[dataAddress];
+		sei();
+		btTransmit(data);		//skicka efterfrågat värde till datorn
+		requestFlag = 0;	//nu har vi skickat
+	}
 }
 
 ISR(USART_RXC_vect)
@@ -180,16 +208,22 @@ void timer_init(){
 	OCR1A = 15625; //Roughly 1s, calculated with prescaling of 1024 using the following formula: 1 = (1024*x)/(16*10^6)
 }
 
+//Interrupt that increments and resets the variables determining the behavior of the course-correction of the robot
 ISR(TIMER1_COMPA_vect){
 	
-	if(backFlag == 1){
+	/*if(backFlag == 1){
 		backFlag = 0;
 		turnFlag = 1;
 	}else if(turnFlag == 1){		
 		turnFlag = 0;
 		TCCR1B = 0;
+	}*/
+	correctCourseStep += 1;
+	if(correctCourseStep == 2){
+		correctCourseStep = 0;
+		correctingCourse = 0;
+		TCCR1B = 0;
 	}
-	
 }
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
@@ -202,7 +236,7 @@ void interruptINT1_init(){
 	GICR = _BV(INT1);
 }
 
-//Interrupt that sets the value for each of the tapesensor's thresholds
+//Interrupt that sets the value for each of the tapesensor's thresholds minus a offset to give added sensitivity
 ISR(INT1_vect){
 	if(calibrating == 0){
 		tapeThresholdBL = (dataValues[TAPE_SENSOR_BACK_LEFT] - thresholdOffset);
@@ -210,10 +244,10 @@ ISR(INT1_vect){
 		tapeThresholdFL = (dataValues[TAPE_SENSOR_FRONT_LEFT] - thresholdOffset);
 		tapeThresholdFR = (dataValues[TAPE_SENSOR_FRONT_RIGHT] - thresholdOffset);
 		
-		dataValues[1] = tapeThresholdBL;
+		/*dataValues[1] = tapeThresholdBL;
 		dataValues[2] = tapeThresholdBR;
 		dataValues[0] = tapeThresholdFL;
-		dataValues[3] = tapeThresholdFR;
+		dataValues[3] = tapeThresholdFR;*/
 	}
 	
 	calibrating += 1;
@@ -221,34 +255,33 @@ ISR(INT1_vect){
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
-
+//-----------------------------AI functions----------------------------
+//---------------------------------------------------------------------
 //konverterar sensorvärdet och lagrar det i Tapevalues
 void ADConvert(){
-	/*for(uint8_t i = 4; i < 8; ++i){
-		if (dataValues[i] > tapeThreshold)
-		{
-			dataValues[TAPE_VALUES] |= _BV(i-4);
-		}
-		else{
-			dataValues[TAPE_VALUES] &= ~_BV(i-4);
-		}
-	}*/
 	
+	//Front left
 	if(dataValues[TAPE_SENSOR_FRONT_LEFT] > tapeThresholdFL){
 		dataValues[TAPE_VALUES] |= _BV(0);
 	}else{
 		dataValues[TAPE_VALUES] &= ~_BV(0);
 	}
+	
+	//Back left
 	if(dataValues[TAPE_SENSOR_BACK_LEFT] > tapeThresholdBL){
 		dataValues[TAPE_VALUES] |= _BV(1);
 	}else{
 		dataValues[TAPE_VALUES] &= ~_BV(1);
 	}
+	
+	//Back right
 	if(dataValues[TAPE_SENSOR_BACK_RIGHT] > tapeThresholdBR){
 		dataValues[TAPE_VALUES] |= _BV(2);
 	}else{
 		dataValues[TAPE_VALUES] &= ~_BV(2);
 	}
+	
+	//Front right
 	if(dataValues[TAPE_SENSOR_FRONT_RIGHT] > tapeThresholdFR){
 		dataValues[TAPE_VALUES] |= _BV(3);
 	}else{
@@ -259,98 +292,107 @@ void ADConvert(){
 
 //Gets all the sensor values from sensorenheten via the SPI-bus
 void getSensorValues(){
-	for(uint8_t i = 4; i < RETRIEVABLE_SENSOR_DATA; ++i){
+	for(uint8_t i = 0; i < RETRIEVABLE_SENSOR_DATA; ++i){
 		
 		PORTB &= ~_BV(PB3);
 		SPI_MasterTransmit(i);
 		PORTB |= _BV(PB3);
-		_delay_us(5);
+		_delay_us(10);
 		
 		
 		PORTB &= ~_BV(PB3);	
 		dataValues[i] = SPI_MasterTransmit(0xAA);
 		PORTB |= _BV(PB3);
-		_delay_us(5);
+		_delay_us(10);
 		
 	}
 	ADConvert();
 }
 
-//Responds to the request flag sent by the computer and sends back the relevant data
-void BT_SensorValues(){
-	if(requestFlag == 1){
-		cli();
-		uint8_t data = dataValues[dataAddress];
-		sei();
-		btTransmit(data);		//skicka efterfrågat värde till datorn
-		requestFlag = 0;	//nu har vi skickat
+//Sets the variables being used in the AI program that needs the sensor values
+void setVariables(){
+	//Mutexlock, clisei-senpai!!!!!
+	cli();
+	frontTapeValues = dataValues[TAPE_VALUES] & 0x09;
+	sei();
+	
+	cli();
+	distanceValue = dataValues[DISTANCE_SENSOR];
+	sei();
+	
+	frontLeftTape = frontTapeValues & 0x01;
+	frontRightTape = frontTapeValues & 0x08;
+}
+
+//Inits the timer and tells the AI that is should correct the course of the robot
+void correctCourse(){
+	correctingCourse = 1;
+	timer_init();
+	//backFlag = 1; 
+	//moveRobot(MOVE_BACK);	
+}
+
+//Executes the steps that correct the course of the robot by backing for one second and then turning for a second
+void executeCorrectionSteps(){
+	
+	//First step: Move back 
+	if(correctCourseStep == 0){
+		moveRobot(MOVE_BACK);
+	}
+	
+	//Second step: Turn 
+	else if(correctCourseStep == 1){
+		if(leftOrRight == 0){
+			moveRobot(TURN_LEFT);
+			}else if(leftOrRight == 1){
+			moveRobot(TURN_RIGHT);
+		}
 	}
 }
 
-//Loops until the tape thresholds have been calibrated
-void calibrateLoop(){
+//Controls the different sensor values and calls functions accordingly 
+void idle(){
+	if(frontLeftTape != 0){
+		leftOrRight = 0;
+		correctCourse();
+	}
+	else if(frontRightTape != 0){
+		leftOrRight = 1;
+		correctCourse();
+	}
 	
-	while(calibrating == 1);
+	else if (distanceValue <= 30)
+	{
+		leftOrRight = 1;
+		correctCourse();
+	}
+	else if ((frontTapeValues == 0x00)){
+		moveRobot(MOVE_FORWARD_FAST);
+	}
 }
+//---------------------------------------------------------------------
+//---------------------------------------------------------------------
 
 int main(void)
 {
 	SPI_MasterInit();
 	btInit();
 	interruptINT1_init();
-		
-	DDRD |= _BV(PD5);
-	DDRD |= _BV(PD4);	
-	uint8_t frontTapeValues = 0;
-	uint8_t backTapeValues = 0;
-	uint8_t frontLeftTape = 0;
-	uint8_t frontRightTape = 0;
-	uint8_t leftOrRight = 0;
-	
-	//getSensorValues();
 	sei();
-	//calibrateLoop();
 	btTransmit(0);
 	
     while(1)
     {
-	
 		BT_SensorValues();
 		getSensorValues();
-				
-		//Start of AI program that should keep the robot within the boundaries of the tape track
+		setVariables();	
 		
-		//Mutexlock, clisei-senpai!!!!!
-		cli();
-		frontTapeValues = dataValues[TAPE_VALUES] & 0x09;
-		sei();
-		
-		frontLeftTape = frontTapeValues & 0x01;
-		frontRightTape = frontTapeValues & 0x08;
-		/*if(backFlag == 1){
-			moveRobot(STOP);
-		}*/
-		if(frontLeftTape != 0){
-			leftOrRight = 0;
-			backFlag = 1;
-			moveRobot(MOVE_BACK);
-			timer_init();
+		//Start of AI program that should keep the robot within the boundaries of the tape track	
+		if(correctingCourse == 1){
+			executeCorrectionSteps();
 		}
-		else if(frontRightTape != 0){
-			leftOrRight = 1;
-			backFlag = 1;
-			moveRobot(MOVE_BACK);
-			timer_init();
-		}
-		else if(turnFlag == 1){
-			if(leftOrRight == 0){
-				moveRobot(TURN_LEFT);
-			}else if(leftOrRight == 1){
-				moveRobot(TURN_RIGHT);
-			}		
-		}
-		else if ((frontTapeValues == 0x00) && (backFlag == 0) && (turnFlag == 0)){
-			moveRobot(MOVE_FORWARD_FAST);
+		else{
+			idle();
 		}
     }
 }

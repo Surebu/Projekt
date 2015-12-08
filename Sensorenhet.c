@@ -9,17 +9,27 @@
 #define F_CPU 16000000UL
 #define PA1HIGH   ((PINA & (1<<PA1)))
 #define ADCONVERTERFREE !(ADCSRA & (1<<ADSC))
+#define IRHIGH (PINA & (1<<PA3))
 #include <avr/io.h>
 #include <util/delay.h>
 #include <stdio.h>
 #include <avr/interrupt.h>
 
 volatile uint16_t distance = 0; // in cm
+volatile uint16_t newDistance = 0; // in cm
 volatile uint8_t distanceSensorWait = 0;
-volatile uint8_t IRSTOPFLAG = 0;
+volatile uint8_t IRSTOPFLAG = 1;
+volatile uint8_t IRSENSORWAIT = 0;
 uint8_t IRsignals[4];
 uint8_t analogTapeValues[4];
 uint8_t TapeValues;
+
+//IR grejs
+volatile uint8_t IRdata = 0;
+volatile uint8_t IRcnt = 0;
+volatile uint8_t IRstate = 0;
+volatile uint8_t IRnum = 0;
+volatile uint8_t IRLoopFlag = 0;
 
 //SPI-constants
 const uint8_t IR_SENSOR_LEFT = 0;
@@ -43,15 +53,16 @@ volatile uint8_t requestedTapeSens = 0;
 const uint8_t TAPE_NUMS[4] = {6,7,5,4};
 
 
-ISR(INT0_vect){	//initierar räkning av avstånd med hjälp av timers
-	distance = 0;			// set dist to 0
+ISR(INT0_vect){	//initierar räkning av avstånd med hjälp av timers		
+	newDistance = 0;		// set dist to 0
 	TCCR2 |= _BV(WGM21) | _BV(CS21) | _BV(CS20);	//CTC, 32prescaler
 	OCR2 = 29;				// http://eleccelerator.com/avr-timer-calculator/ 0.0000058s
 }
 
 ISR(TIMER2_COMP_vect){
-	if(PA1HIGH && !distanceSensorWait) distance++;	//Så länge echo är hög och vi inte väntar öka avstånd
+	if(PA1HIGH && !distanceSensorWait && (newDistance < 255)) newDistance++;	//Så länge echo är hög och vi inte väntar öka avstånd, alla värden över 255 ignoreras
 	else if(!distanceSensorWait) {	//om echo inte hög och vi inte väntar, måste vi starta väntetid(10ms)
+		distance = newDistance;	
 		distanceSensorWait = 1;
 		TCCR2 = 0;
 		TCCR2 = _BV(WGM21) | _BV(CS22) | _BV(CS21) | _BV(CS20); //CTC, 1024prescaler
@@ -62,30 +73,21 @@ ISR(TIMER2_COMP_vect){
 		TCCR2 = 0;
 	}
 }
-
+/*
 ISR(TIMER1_COMPA_vect){
 	IRSTOPFLAG = 1;
 }
-
+*/
 void enableInterrupts(){
 	GICR = 1<<INT0;					// Enable INT0
 	MCUCR = 1<<ISC01 | 1<<ISC00;	// Trigger INT0 on rising edge	
 	TIMSK |= _BV(OCIE1A) | _BV(OCIE2);//enable timer interrupts
-	OCR1A = 7000;					//64*x/16000000 = 28*10^-3 => x = 7000
 }
 void initPorts(){
 	DDRA |= _BV(PA2);									//PA2 triggersignal dist.
 	DDRB = 0xFF;	//test
 }
-void initIRSensors(){
-	TCCR0 |= _BV(CS02);	//prescaler 256
-	
-	TCCR1B = 0;
-	TCCR1B |= _BV(CS10) | _BV(CS11) | _BV(WGM12);//CTC, 64 prescaler
-	 
-	IRSTOPFLAG = 0;
-	TCNT0 = 0;	
-}
+
 
 
 void initADConverter(){
@@ -137,6 +139,89 @@ ISR(ADC_vect){//när adomvandling färdig
 	if(requestedTapeSens < 3) requestedTapeSens++;	//och säg att vi vill kolla nästa sensor eller börja om
 	else requestedTapeSens = 0; 
 }
+//--------------------------------------------
+//		IR-sensor
+//--------------------------------------------
+
+void initNextIRSensors(){
+
+	TCCR0 |= _BV(CS02);	//prescaler 256
+	
+	TCCR1B = 0;	//init timer1
+	TCCR1B |= _BV(CS10) | _BV(CS11) | _BV(WGM12);//CTC, 64 prescaler
+	
+	IRSTOPFLAG = 0;
+	PORTB &= ~_BV(PB2);	//enable mux x
+	
+	if(IRnum >= 3) IRnum = 0;
+	else IRnum++;
+	
+	PORTB &= 0xFC;
+	PORTB |= IRnum; //set portb to 000000xx, where xx is IRnum
+	
+		
+	TCNT0 = 0;
+	GICR |= _BV(INT1); //enable INT1
+}
+
+ISR(TIMER1_COMPA_vect){
+	if(!IRSENSORWAIT){
+		IRSTOPFLAG = 1;
+		IRSENSORWAIT = 1;
+		OCR1A = 25000;		//vänta i 0.1s innan vi läser igen
+	}
+	else if(IRSENSORWAIT){
+		OCR1A = 4000;
+		IRSENSORWAIT = 0;		
+	}
+}
+
+ISR(INT1_vect){
+	if(!IRSTOPFLAG){
+		if(!IRHIGH){
+			TCNT0 = 0;
+			IRLoopFlag = 1;			
+		}
+		else if(IRHIGH && IRLoopFlag){
+			if (TCNT0 >= 120 && IRstate == 0)
+			{
+				//data = 0;
+				IRstate = 1;
+				IRcnt = 0;
+			}
+			else if (TCNT0 >= 60 && IRstate == 1)
+			{
+				IRdata = IRdata << 1;
+				IRdata++;
+				IRcnt++;
+			}
+			else if (TCNT0 >= 30 && IRstate == 1)
+			{
+				IRdata = IRdata << 1;
+				IRcnt++;
+			}
+			if (IRcnt >= 3)
+			{
+				IRstate = 0;
+				IRcnt = 0;
+				IRsignals[IRnum] = IRdata & 0x07;
+			}
+			TCNT0 = 0;
+			IRLoopFlag = 0;		//föredetta break
+		}
+	}
+}
+
+void initIRSensors(){
+	TCCR0 |= _BV(CS02);	//prescaler 256
+
+	OCR1A = 4000;					//64*x/16000000 = 28*10^-3 => x = 7000	
+	TCCR1B = 0;
+	TCCR1B |= _BV(CS10) | _BV(CS11) | _BV(WGM12);//CTC, 64 prescaler
+	
+	IRSTOPFLAG = 0;
+	TCNT0 = 0;
+}
 
 void readIRSensor(uint8_t num){
 	initIRSensors();
@@ -185,9 +270,10 @@ void readIRSensor(uint8_t num){
 	}
 }
 
+
 void readIRSensors(){
 	PORTB &= ~_BV(PB2);	//enable mux x
-    for (uint8_t num = 0; num<4; num++)//Loop over the sensors
+    for (uint8_t num = 0; num<1; num++)//Loop over the sensors
     {
 		PORTB &= 0xFC;
 	    PORTB |= num; //set portb to 000000xx, where xx is num
@@ -270,7 +356,10 @@ int main(void)
 			 adc_read(TAPE_NUMS[requestedTapeSens]);	//om vi inte adomvandlar något, starta nästa
 		}
 		//readLaserDetector();
-		//readIRSensors();
+		if(!IRSENSORWAIT) readIRSensors();
 		if(!(distanceSensorWait || PA1HIGH)) triggerSignal();	//Om vi inte väntar eller echo är hög så kan vi göra en ny trigger-signal
+		/*if(IRSTOPFLAG){	//om vi väntar på innan vi kan använda avståndssensorn igen kan vi passa på att kolla ir-signaler
+			//initNextIRSensors();
+		}*/
     }
 }
