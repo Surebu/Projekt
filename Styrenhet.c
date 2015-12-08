@@ -20,7 +20,7 @@ const uint8_t FAST = 128;
 //Variables for compare-interrupts in 8-bit timer 2, values derived from time(s)/(1/(clk/prescaling))
 const uint8_t STARTBIT = 37; //2.4 ms
 const uint8_t LOGICONE = 19; //1.2 ms
-const uint8_t TICK = 9; //0.6 ms
+const uint8_t LOGICZERO = 9; //0.6 ms
 volatile uint8_t IRState = 0; //0 = "startbit", 1 = "pause"...........
 
 //Intstruction byte for commands from målsökningsenhet
@@ -36,40 +36,40 @@ ISR(TIMER2_COMP_vect){
 	//Code = 001
 	switch(IRState){
 		case 0://start bit
-		OCR2 = STARTBIT; //Set time to next interrupt
-		TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00); //Register settings for an alternating signal of 38 KHz
+			OCR2 = STARTBIT; //Set time to next interrupt
+			TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00); //Register settings for an alternating signal of 38 KHz
 		break;
 		case 1://pause
-		TCCR0 = 0; //Normal port function
-		PORTB &= ~_BV(PB3); //Force output zero
-		OCR2 = LOGICZERO; //Set time to next interrupt
+			TCCR0 = 0; //Normal port function
+			PORTB &= ~_BV(PB3); //Force output zero
+			OCR2 = LOGICZERO; //Set time to next interrupt
 		break;
 		case 2://0
-		OCR2 = LOGICZERO;
-		TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
+			OCR2 = LOGICZERO;
+			TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
 		break;
 		case 3://pause
-		TCCR0 = 0;
-		PORTB &= ~_BV(PB3);
-		OCR2 = LOGICZERO;
+			TCCR0 = 0;
+			PORTB &= ~_BV(PB3);
+			OCR2 = LOGICZERO;
 		break;
 		case 4://0
-		OCR2 = LOGICZERO;
-		TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
+			OCR2 = LOGICZERO;
+			TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
 		break;
 		case 5://pause
-		TCCR0 = 0;
-		PORTB &= ~_BV(PB3);
-		OCR2 = LOGICZERO;
+			TCCR0 = 0;
+			PORTB &= ~_BV(PB3);
+			OCR2 = LOGICZERO;
 		break;
 		case 6://1
-		OCR2 = LOGICONE;
-		TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
+			OCR2 = LOGICONE;
+			TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
 		break;
 		case 7://pause
-		TCCR0 = 0;
-		PORTB &= ~_BV(PB3);
-		OCR2 = LOGICZERO;
+			TCCR0 = 0;
+			PORTB &= ~_BV(PB3);
+			OCR2 = LOGICZERO;
 		break;
 	}
 	
@@ -253,7 +253,8 @@ int main(void)
 		if(commandRecievedFlag){
 			if(cmdH == 1){
 				setMotors(cmdL);
-			}else if(cmdH == 2){
+			}
+			else if(cmdH == 2){
 				controlLaserModule(cmdL)
 			}
 			else if(cmdH == 3){
