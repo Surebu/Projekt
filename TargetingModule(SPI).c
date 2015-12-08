@@ -21,6 +21,16 @@ volatile uint8_t sensorData = 0; //Data from sensor
 
 const uint8_t RETRIEVABLE_SENSOR_DATA = 10;
 
+//Tapethresholds
+const uint8_t tapeThreshold = 120;
+
+volatile uint8_t tapeThresholdFL = tapeThreshold;
+volatile uint8_t tapeThresholdFR = tapeThreshold;
+volatile uint8_t tapeThresholdBL = tapeThreshold;
+volatile uint8_t tapeThresholdBR = tapeThreshold;
+
+const uint8_t thresholdOffset = 5; 
+
 //Robot commands
 const uint8_t MOVE_FORWARD_SLOW = 0x1A;
 const uint8_t MOVE_FORWARD_FAST = 0x1F;
@@ -59,8 +69,6 @@ const uint8_t TAPE_SENSOR_FRONT_RIGHT = 7;
 const uint8_t DISTANCE_SENSOR = 8;
 const uint8_t HIT_DETECTOR = 9;
 const uint8_t TAPE_VALUES =  10;
-
-uint8_t tapeThreshold = 120;
 
 volatile uint8_t backFlag = 0;
 volatile uint8_t turnFlag = 0;
@@ -177,11 +185,29 @@ ISR(TIMER1_COMPA_vect){
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
+//--------------------------------Tape threshold calibrating--------------------------------------
+//------------------------------------------------------------------------------------------------
+void interruptINT1_init(){
+	
+	MCUCR = _BV(ISC11) | _BV(ISC10);	// Trigger INT1 on rising edge
+	GICR = _BV(INT1);
+}
+
+//Interrupt that sets the value for each of the tapesensor's thresholds
+ISR(INT1_vect){
+	tapeThresholdBL = (dataValues[TAPE_SENSOR_BACK_LEFT] - thresholdOffset);
+	tapeThresholdBR = (dataValues[TAPE_SENSOR_BACK_RIGHT] - thresholdOffset;
+	tapeThresholdFL = (dataValues[TAPE_SENSOR_FRONT_LEFT] - thresholdOffset);
+	tapeThresholdFR = (dataValues[TAPE_SENSOR_FRONT_RIGHT] - thresholdOffset);
+}
+
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
+
+
 //konverterar sensorvärdet och lagrar det i Tapevalues
 void ADConvert(){
-	for(uint8_t i = 4; i < 8; ++i){
+	/*for(uint8_t i = 4; i < 8; ++i){
 		if (dataValues[i] > tapeThreshold)
 		{
 			dataValues[TAPE_VALUES] |= _BV(i-4);
@@ -189,7 +215,29 @@ void ADConvert(){
 		else{
 			dataValues[TAPE_VALUES] &= ~_BV(i-4);
 		}
+	}*/
+	
+	if(dataValues[TAPE_SENSOR_FRONT_LEFT] > tapeThresholdFL){
+		dataValues[TAPE_VALUES] |= _BV(0);
+	}else{
+		dataValues[TAPE_VALUES] &= ~_BV(0);
 	}
+	if(dataValues[TAPE_SENSOR_BACK_LEFT] > tapeThresholdBL){
+		dataValues[TAPE_VALUES] |= _BV(1);
+	}else{
+		dataValues[TAPE_VALUES] &= ~_BV(1);
+	}
+	if(dataValues[TAPE_SENSOR_BACK_RIGHT] > tapeThresholdBR){
+		dataValues[TAPE_VALUES] |= _BV(2);
+	}else{
+		dataValues[TAPE_VALUES] &= ~_BV(2);
+	}
+	if(dataValues[TAPE_SENSOR_FRONT_RIGHT] > tapeThresholdFR){
+		dataValues[TAPE_VALUES] |= _BV(3);
+	}else{
+		dataValues[TAPE_VALUES] &= ~_BV(3);
+	}
+	
 }
 
 //Gets all the sensor values from sensorenheten via the SPI-bus
@@ -225,6 +273,7 @@ int main(void)
 {
 	SPI_MasterInit();
 	btInit();
+	interruptINT1_init();
 	sei();
 	btTransmit(0);
 	
