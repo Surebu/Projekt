@@ -354,9 +354,10 @@ int main(void)
 		}
 		//readLaserDetector();
 		if(!IRSENSORWAIT){
+			readIRSensors();
 			IRnum++;
 			if(IRnum >= 4) IRnum = 0;
-			readIRSensors();
+			
 		}
 		if(!(distanceSensorWait || PA1HIGH)) triggerSignal();	//Om vi inte väntar eller echo är hög så kan vi göra en ny trigger-signal
 		/*if(IRSTOPFLAG){	//om vi väntar på innan vi kan använda avståndssensorn igen kan vi passa på att kolla ir-signaler

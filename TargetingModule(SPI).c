@@ -25,6 +25,7 @@ volatile uint8_t tapeThresholdBL = 0;
 volatile uint8_t tapeThresholdBR = 0;
 
 const uint8_t thresholdOffset = 20; //Offset to give the robot some added sensitivity in detecting tape
+const uint16_t TIMER_1A_SECOND = 15625;	//Roughly 1s, calculated with prescaling of 1024 using the following formula: 1 = (1024*x)/(16*10^6), 5*(16*10^6)/1024 = x 
 
 volatile uint8_t calibrating = 0; //1 if the robot is calibrating the tape thresholds
 //-----------------------------------------------------------------------------
@@ -36,6 +37,8 @@ const uint8_t MOVE_BACK = 0x15;
 const uint8_t TURN_RIGHT = 0x17;
 const uint8_t TURN_LEFT = 0x1D;
 const uint8_t STOP = 0x10;
+const uint8_t ACTIVATE_LASER = 0x21;
+const uint8_t DEACTIVATE_LASER = 0x22;
 //------------------------------------------------------------------------------------
 
 //-------------------Sensor data and index constants----------------------------------
@@ -79,11 +82,26 @@ const uint8_t TAPE_VALUES =  10;
 
 //--------Sensor-control "booleans" to determine behavior the of robot---------------------
 uint8_t distanceValue = 0;
-uint8_t IRLeft = 0;
+
+uint8_t IRLeft = 8;
+uint8_t IRRight = 8;
+uint8_t IRFront = 8;
+uint8_t IRBack = 8;
+
 uint8_t frontTapeValues = 0;
 uint8_t frontLeftTape = 0;
 uint8_t frontRightTape = 0;
 uint8_t leftOrRight = 0; //If 0 turn left, 1 turn right
+
+volatile uint8_t forward = 1;
+volatile uint8_t turning = 0;
+volatile uint8_t backing = 0;
+volatile uint8_t backnTurn = 0; 
+volatile uint8_t IRFound = 0;
+volatile uint8_t sprayPray = 0;
+volatile uint8_t sprayFlag = 0;
+
+uint16_t timerValue = 0;
 //-------------------------------------------------------------------------------------------
 
 //------------------------------Course-correction vairables--------------------------------
@@ -259,9 +277,10 @@ void moveRobot(uint8_t move){
 //---------------------------------------------------------------------------
 
 void timer_init(){
+	TCNT1 = 0;
 	TCCR1B |= _BV(WGM12) | _BV(CS10) | _BV(CS12); //Set CTC with prescaling 1024
 	TIMSK |= _BV(OCIE1A); //Enable interrupt on compare match, compare register 1A
-	OCR1A = 15625; //Roughly 1s, calculated with prescaling of 1024 using the following formula: 1 = (1024*x)/(16*10^6), 5*(16*10^6)/1024 = x 
+	OCR1A = timerValue; //Roughly 1s, calculated with prescaling of 1024 using the following formula: 1 = (1024*x)/(16*10^6), 5*(16*10^6)/1024 = x 
 }
 
 //Interrupt that increments and resets the variables determining the behavior of the course-correction of the robot
@@ -274,11 +293,29 @@ ISR(TIMER1_COMPA_vect){
 		turnFlag = 0;
 		TCCR1B = 0;
 	}*/
-	correctCourseStep += 1;
+	/*correctCourseStep += 1;
 	if(correctCourseStep == 2){
 		correctCourseStep = 0;
 		correctingCourse = 0;
 		TCCR1B = 0;
+	}*/
+	if (backnTurn){
+		backnTurn = 0;
+		turning = 1;
+		backing = 0;
+	}
+	else if(sprayPray && !sprayFlag){
+		leftOrRight = !leftOrRight;
+		OCR1A = 2*timerValue;
+		sprayFlag = 1;
+	}
+	else{
+		forward = 1;
+		turning = 0;
+		backing = 0;
+		IRFound = 0;
+		sprayPray = 0;
+		sprayFlag = 0;
 	}
 }
 //---------------------------------------------------------------------
@@ -378,6 +415,9 @@ void setVariables(){
 	
 	cli();
 	IRLeft = dataValues[IR_SENSOR_LEFT];
+	IRRight = dataValues[IR_SENSOR_RIGHT];
+	IRFront = dataValues[IR_SENSOR_FRONT];
+	IRBack = dataValues[IR_SENSOR_BACK];
 	sei();
 	
 	frontLeftTape = frontTapeValues & 0x01;
@@ -387,15 +427,15 @@ void setVariables(){
 //Inits the timer and tells the AI that is should correct the course of the robot
 void correctCourse(){
 	correctingCourse = 1;
-	timer_init();
+	timer_init(TIMER_1A_SECOND);
 	//backFlag = 1; 
 	//moveRobot(MOVE_BACK);	
 }
 
-void turn(){
+void turn(uint16_t timerValue){
 	correctingCourse = 1;
 	correctCourseStep = 1;
-	timer_init();
+	timer_init(timerValue);
 }
 
 //Executes the steps that correct the course of the robot by backing for one second and then turning for a second
@@ -418,28 +458,69 @@ void executeCorrectionSteps(){
 
 //Controls the different sensor values and calls functions accordingly 
 void idle(){
-	if(frontLeftTape != 0){
+	moveRobot(DEACTIVATE_LASER);
+	//IMMAFIRINGMALAZORZ = 0;
+	
+	if (distanceValue <= 20)
+	{
 		leftOrRight = 1;
-		correctCourse();
+		backing = 1;
+		backnTurn = 1;
+		timerValue = TIMER_1A_SECOND/2;
+		timer_init();
+		//correctCourse();
+	}
+	else if(frontLeftTape != 0){
+		leftOrRight = 1;
+		backing = 1;
+		backnTurn = 1;
+		timerValue = TIMER_1A_SECOND/2;
+		timer_init();
+		//correctCourse();
 	}
 	else if(frontRightTape != 0){
 		leftOrRight = 0;
-		correctCourse();
+		backing = 1;
+		backnTurn = 1;
+		timerValue = TIMER_1A_SECOND/2;
+		timer_init();
+		//correctCourse();
 	}
 	
-	else if (distanceValue <= 20)
-	{
-		leftOrRight = 1;
-		correctCourse();
+	else if (IRFront != 4 && IRFront < 8){
+		moveRobot(ACTIVATE_LASER);
+		sprayPray = 1;
+		turning = 1;
+		timerValue = TIMER_1A_SECOND/4;
+		timer_init();
 	}
 	
-	else if(IRLeft != 4 && IRLeft < 8){
-		leftOrRight = 0;
-		turn();
+	else if (!IRFound){
+		
+		if(IRLeft != 4 && IRLeft < 8){
+			//moveRobot(ACTIVATE_LASER);
+			leftOrRight = 0;
+			turning = 1;
+			IRFound = 1;
+			timerValue = TIMER_1A_SECOND*0.8;
+			timer_init();
+			//turn(TIMER_1A_SECOND);
+		}
+	
+		else if(IRRight != 4 && IRRight < 8){
+			//moveRobot(ACTIVATE_LASER);
+			leftOrRight = 1;
+			turning = 1;
+			IRFound = 1;
+			timerValue = TIMER_1A_SECOND*0.8;
+			timer_init();
+			//turn(TIMER_1A_SECOND);
+		}
 	}
-	else if ((frontTapeValues == 0x00)){
+	
+	/*else if ((frontTapeValues == 0x00)){
 		moveRobot(MOVE_FORWARD_FAST);
-	}
+	}*/
 }
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
@@ -458,12 +539,46 @@ int main(void)
 		getSensorValues();
 		setVariables();	
 		
-		//Start of AI program that should keep the robot within the boundaries of the tape track	
-		if(correctingCourse == 1){
+		//Start of AI program that should keep the robot within the boundaries of the tape track
+		/*if(sprayPray){
+			moveRobot(ACTIVATE_LASER);
+			IMMAFIRINGMALAZORZ = 1;
+			turn(TIMER_1A_SECOND/4);
+			
+		if (IRFront != 4 && IRFront < 8){
+			/*if (!IMMAFIRINGMALAZORZ){
+				moveRobot(ACTIVATE_LASER);
+				IMMAFIRINGMALAZORZ = 1;
+				turn(TIMER_1A_SECOND/2);
+			}*/
+			//moveRobot(STOP);
+			//while(1);
+			/*sprayPray = 1;
+		}
+		else if(correctingCourse == 1){
 			executeCorrectionSteps();
 		}
 		else{
 			idle();
+		}*/
+		
+		if(!sprayPray){
+			idle();
+		}
+		
+		if(turning){
+			if(leftOrRight == 0){
+				moveRobot(TURN_LEFT);
+			}else if(leftOrRight == 1){
+				moveRobot(TURN_RIGHT);
+			}
+		}
+		else if(backing){
+			moveRobot(MOVE_BACK);
+		}
+		else if (forward){
+			moveRobot(MOVE_FORWARD_FAST);
+			forward = 0;
 		}
     }
 }
