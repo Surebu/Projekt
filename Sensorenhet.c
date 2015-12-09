@@ -176,7 +176,7 @@ ISR(TIMER1_COMPA_vect){
 	}
 }
 
-ISR(INT1_vect){
+/*ISR(INT1_vect){
 	if(!IRSTOPFLAG){
 		if(!IRHIGH){
 			TCNT0 = 0;
@@ -210,7 +210,7 @@ ISR(INT1_vect){
 			IRLoopFlag = 0;		//föredetta break
 		}
 	}
-}
+}*/
 
 void initIRSensors(){
 	TCCR0 |= _BV(CS02);	//prescaler 256
@@ -225,7 +225,7 @@ void initIRSensors(){
 
 void readIRSensor(uint8_t num){
 	initIRSensors();
-	IRsignals[num] = 0;
+	IRsignals[num] = 8;
 	uint8_t data = 0;
 	uint8_t state = 0; //0 = startbit, 1 = data
 	uint8_t cnt = 0; //Counts the number of databits that have been sent
@@ -273,12 +273,9 @@ void readIRSensor(uint8_t num){
 
 void readIRSensors(){
 	PORTB &= ~_BV(PB2);	//enable mux x
-    for (uint8_t num = 0; num<1; num++)//Loop over the sensors
-    {
-		PORTB &= 0xFC;
-	    PORTB |= num; //set portb to 000000xx, where xx is num
-		readIRSensor(num);
-    }
+	PORTB &= 0xFC;
+	PORTB |= IRnum; //set portb to 000000xx, where xx is num
+	readIRSensor(IRnum);
 	PORTB |= _BV(PB2);	//disable mux x
 }
 
@@ -356,10 +353,14 @@ int main(void)
 			 adc_read(TAPE_NUMS[requestedTapeSens]);	//om vi inte adomvandlar något, starta nästa
 		}
 		//readLaserDetector();
-		if(!IRSENSORWAIT) readIRSensors();
+		if(!IRSENSORWAIT){
+			IRnum++;
+			if(IRnum >= 4) IRnum = 0;
+			readIRSensors();
+		}
 		if(!(distanceSensorWait || PA1HIGH)) triggerSignal();	//Om vi inte väntar eller echo är hög så kan vi göra en ny trigger-signal
 		/*if(IRSTOPFLAG){	//om vi väntar på innan vi kan använda avståndssensorn igen kan vi passa på att kolla ir-signaler
-			//initNextIRSensors();
+			initNextIRSensors();
 		}*/
     }
 }

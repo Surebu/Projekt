@@ -33,8 +33,8 @@ volatile uint8_t calibrating = 0; //1 if the robot is calibrating the tape thres
 const uint8_t MOVE_FORWARD_SLOW = 0x1A;
 const uint8_t MOVE_FORWARD_FAST = 0x1F;
 const uint8_t MOVE_BACK = 0x15;
-const uint8_t TURN_RIGHT = 0x1D;
-const uint8_t TURN_LEFT = 0x17;
+const uint8_t TURN_RIGHT = 0x17;
+const uint8_t TURN_LEFT = 0x1D;
 const uint8_t STOP = 0x10;
 //------------------------------------------------------------------------------------
 
@@ -79,6 +79,7 @@ const uint8_t TAPE_VALUES =  10;
 
 //--------Sensor-control "booleans" to determine behavior the of robot---------------------
 uint8_t distanceValue = 0;
+uint8_t IRLeft = 0;
 uint8_t frontTapeValues = 0;
 uint8_t frontLeftTape = 0;
 uint8_t frontRightTape = 0;
@@ -91,6 +92,61 @@ uint8_t leftOrRight = 0; //If 0 turn left, 1 turn right
 volatile uint8_t correctingCourse = 0; //1 if the robot is correcting its course
 volatile uint8_t correctCourseStep = 0; //Which step the robot is on in its course-correcting
 //-------------------------------------------------------------------------------------------
+
+//-------------------------------------Gyro---------------------------
+//---------------------------------------------------------------------
+
+/*void initGyro(){
+	DDRB |= _BV(PB4);
+	PORTB &= ~_BV(PB4);
+	data += SPI_MasterTransmit(ADCC);
+	data += SPI_MasterTransmit(0x00);
+	data += SPI_MasterTransmit(0x00);
+	PORTB |= _BV(PB4);
+	_delay_us(115);
+}
+
+short adcToAngularRate(unsigned short adcValue){
+	short vOutAngularRate = (adcValue * 25/12)+400;  // in mV (millivolts)
+	return vOutAngularRate;
+	
+	// from the data sheet, N2 version is 6,67
+	//return (vOutAngularRate - 2500)/26.67;
+	// E2 is 13,33 and R2 is 26,67 mV/deg
+	// change accordingly.
+}
+
+void getGyroValue(){
+	PORTB &= ~_BV(PB4);
+	data += SPI_MasterTransmit(ADCC);
+	data += SPI_MasterTransmit(0x00);
+	data += SPI_MasterTransmit(0x00);
+	PORTB |= _BV(PB4);
+	_delay_us(115);
+
+	PORTB &= ~_BV(PB4);
+	data += SPI_MasterTransmit(ADCR);
+	dataH = SPI_MasterTransmit(0x00); //MSBs
+	dataL = SPI_MasterTransmit(0x00); //LSBs
+	PORTB |= _BV(PB4);
+	
+	dataH = dataH & 0x0F; //The 4 highest bits are not adc-values
+	dataL = dataL >> 1; //Shift out the lowest bit
+	
+	//Unsigned makes a difference!!!
+	unsigned short adcValue = dataL; //Store the two received bytes to an int
+	unsigned short temp = dataH;
+	temp = temp << 7;
+	adcValue = adcValue + temp;
+	
+	short angularRate = adcToAngularRate(adcValue);
+	
+	
+	PORTA = angularRate;
+	//PORTC = (angularRate >> 8);
+}*/
+//---------------------------------------------------------------------
+//---------------------------------------------------------------------
 
 //----------------------------------BT----------------------------------
 //----------------------------------------------------------------------
@@ -205,7 +261,7 @@ void moveRobot(uint8_t move){
 void timer_init(){
 	TCCR1B |= _BV(WGM12) | _BV(CS10) | _BV(CS12); //Set CTC with prescaling 1024
 	TIMSK |= _BV(OCIE1A); //Enable interrupt on compare match, compare register 1A
-	OCR1A = 15625; //Roughly 1s, calculated with prescaling of 1024 using the following formula: 1 = (1024*x)/(16*10^6)
+	OCR1A = 15625; //Roughly 1s, calculated with prescaling of 1024 using the following formula: 1 = (1024*x)/(16*10^6), 5*(16*10^6)/1024 = x 
 }
 
 //Interrupt that increments and resets the variables determining the behavior of the course-correction of the robot
@@ -320,6 +376,10 @@ void setVariables(){
 	distanceValue = dataValues[DISTANCE_SENSOR];
 	sei();
 	
+	cli();
+	IRLeft = dataValues[IR_SENSOR_LEFT];
+	sei();
+	
 	frontLeftTape = frontTapeValues & 0x01;
 	frontRightTape = frontTapeValues & 0x08;
 }
@@ -330,6 +390,12 @@ void correctCourse(){
 	timer_init();
 	//backFlag = 1; 
 	//moveRobot(MOVE_BACK);	
+}
+
+void turn(){
+	correctingCourse = 1;
+	correctCourseStep = 1;
+	timer_init();
 }
 
 //Executes the steps that correct the course of the robot by backing for one second and then turning for a second
@@ -344,7 +410,7 @@ void executeCorrectionSteps(){
 	else if(correctCourseStep == 1){
 		if(leftOrRight == 0){
 			moveRobot(TURN_LEFT);
-			}else if(leftOrRight == 1){
+		}else if(leftOrRight == 1){
 			moveRobot(TURN_RIGHT);
 		}
 	}
@@ -353,18 +419,23 @@ void executeCorrectionSteps(){
 //Controls the different sensor values and calls functions accordingly 
 void idle(){
 	if(frontLeftTape != 0){
-		leftOrRight = 0;
+		leftOrRight = 1;
 		correctCourse();
 	}
 	else if(frontRightTape != 0){
+		leftOrRight = 0;
+		correctCourse();
+	}
+	
+	else if (distanceValue <= 20)
+	{
 		leftOrRight = 1;
 		correctCourse();
 	}
 	
-	else if (distanceValue <= 30)
-	{
-		leftOrRight = 1;
-		correctCourse();
+	else if(IRLeft != 4 && IRLeft < 8){
+		leftOrRight = 0;
+		turn();
 	}
 	else if ((frontTapeValues == 0x00)){
 		moveRobot(MOVE_FORWARD_FAST);
