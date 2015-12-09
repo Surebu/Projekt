@@ -17,11 +17,17 @@
  const uint8_t SLOW = 64;
  const uint8_t FAST = 128;
  
+ // fulkod börjar här
+ uint8_t LEDbool = 0;
+ //fulkod slutar här
+ 
+ 
  //Variables for compare-interrupts in 8-bit timer 2, values derived from time(s)/(1/(clk/prescaling))
  const uint8_t STARTBIT = 37; //2.4 ms
  const uint8_t LOGICONE = 19; //1.2 ms
  const uint8_t LOGICZERO = 9; //0.6 ms
  volatile uint8_t IRState = 0; //0 = "startbit", 1 = "pause"...........
+ volatile uint8_t IR_ON = 1;
  
  //Intstruction byte for commands from målsökningsenhet
  uint8_t command = 0;
@@ -32,48 +38,49 @@
  	
  	PORTC |= _BV(PC0);
  	//Code = 001
- 	switch(IRState){
- 		case 0://start bit
- 			OCR2 = STARTBIT; //Set time to next interrupt
- 			TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00); //Register settings for an alternating signal of 38 KHz
- 			break;
- 		case 1://pause
- 			TCCR0 = 0; //Normal port function
- 			PORTB &= ~_BV(PB3); //Force output zero
- 			OCR2 = LOGICZERO; //Set time to next interrupt
- 			break;
- 		case 2://0
- 			OCR2 = LOGICZERO;
- 			TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
- 			break;
- 		case 3://pause
- 			TCCR0 = 0; 
- 			PORTB &= ~_BV(PB3); 
- 			OCR2 = LOGICZERO;
- 			break;
- 		case 4://0
- 			OCR2 = LOGICZERO;
- 			TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
- 			break;
- 		case 5://pause
- 			TCCR0 = 0;
- 			PORTB &= ~_BV(PB3); 
- 			OCR2 = LOGICZERO;
- 			break;		
- 		case 6://1		
- 			OCR2 = LOGICONE;
- 			TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
- 			break;
- 		case 7://pause
- 			TCCR0 = 0; 
- 			PORTB &= ~_BV(PB3); 
- 			OCR2 = LOGICZERO;
- 			break;
- 	}
+	if(IR_ON){
+ 		switch(IRState){
+ 			case 0://start bit
+ 				OCR2 = STARTBIT; //Set time to next interrupt
+ 				TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00); //Register settings for an alternating signal of 38 KHz
+ 				break;
+ 			case 1://pause
+ 				TCCR0 = 0; //Normal port function
+ 				PORTB &= ~_BV(PB3); //Force output zero
+ 				OCR2 = LOGICZERO; //Set time to next interrupt
+ 				break;
+ 			case 2://0
+ 				OCR2 = LOGICZERO;
+ 				TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
+ 				break;
+ 			case 3://pause
+ 				TCCR0 = 0; 
+ 				PORTB &= ~_BV(PB3); 
+ 				OCR2 = LOGICZERO;
+ 				break;
+ 			case 4://0
+ 				OCR2 = LOGICZERO;
+ 				TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
+ 				break;
+ 			case 5://pause
+ 				TCCR0 = 0;
+ 				PORTB &= ~_BV(PB3); 
+ 				OCR2 = LOGICZERO;
+ 				break;		
+ 			case 6://1		
+ 				OCR2 = LOGICONE;
+ 				TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
+ 				break;
+ 			case 7://pause
+ 				TCCR0 = 0; 
+ 				PORTB &= ~_BV(PB3); 
+ 				OCR2 = LOGICZERO;
+ 				break;
+ 		}
  	
- 	if(IRState >= 7) IRState = 0;
- 	else IRState++;
- 		
+ 		if(IRState >= 7) IRState = 0;
+ 		else IRState++;
+	}
  	//Restart counters
  	TCNT0 = 0;
  	TCNT2 = 0;
@@ -190,15 +197,43 @@
  
  //--------------------------------Lasorz---------------------------------
  //-----------------------------------------------------------------------
- void shootLaser(){
- 	PORTD |= _BV(PD6);
- 	PORTD &= ~_BV(PD6);	
+ void controlLaser(uint8_t arg){
+	if(arg) PORTD |= _BV(PD6);
+ 	else PORTD &= ~_BV(PD6);
  }
  
- void activateLaserDetector(){
- 	PORTA |= _BV(PA3);
- 	PORTA &= ~_BV(PA3);
+  //--------------------------------LED------------------------------------
+  //-----------------------------------------------------------------------
+ void LED(uint8_t arg){
+	 PORTA &= ~(_BV(PA0) | _BV(PA1) | __BV(PA2));
+	 PORTA |= ((arg & ~0xfb) >> 2) << PA0;// 00000x00, 0000000x
+	 PORTA |= ((arg & ~0xfd) >> 1) << PA1;// 00000x00, 0000000x
+	 PORTA |= ((arg & ~0xfe)) << PA2;// 00000x00, 0000000x
+	 
  }
+  
+ //-----------------------IR-Signal och Skottdetektor---------------------
+ //-----------------------------------------------------------------------
+ void infraRed(uint8_t arg){
+	if(arg == 1){
+		//IR AV, PB3 = 0
+		IR_ON = 0;
+		TCCR0 = 0; // Normal port operation pb3
+		IRState = 0;
+		OCR2 = STARTBIT;
+		PORTB &= ~_BV(PB3);
+	}
+	else if(arg == 2){
+		//IR PÅ, PB3 = 1
+		IR_ON = 1;
+		PORTD |= _BV(PB3);
+	}
+	else if(arg ==3){
+		//aktivera skottdetektor, PA3 sätts till 1 sedan 0
+		PORTA |= _BV(PA3);
+		PORTA &= ~_BV(PA3);
+	}
+ } 
  //-----------------------------------------------------------------------
  //-----------------------------------------------------------------------
  
@@ -218,12 +253,18 @@
  	
  	while(1)
  	{
-		shootLaser();
-		//shootLaser();
- 		if(cmdH == 1){
- 			setMotors(cmdL);
- 		}else if(cmdH == 2){
- 			activateLaserDetector();
- 		}
+		 if(cmdH == 1)
+		 {
+			 setMotors(cmdL);
+		 }
+		 else if(cmdH == 2){
+ 			controlLaser(cmdL);
+		 }
+		 else if(cmdH == 3){
+			 infraRed(cmdL);
+		 }
+		 else if(cmdH == 4){
+			 LED(cmdL);
+		 }
  	}
  }
