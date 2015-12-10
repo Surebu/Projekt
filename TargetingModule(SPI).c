@@ -39,6 +39,10 @@ const uint8_t TURN_LEFT = 0x1D;
 const uint8_t STOP = 0x10;
 const uint8_t ACTIVATE_LASER = 0x21;
 const uint8_t DEACTIVATE_LASER = 0x22;
+const uint8_t IR_OFF = 0x31; 
+const uint8_t IR_ON = 0x32;
+const uint8_t ACTIVATE_HIT = 0x33;
+const uint8_t LED = 0x40;
 //------------------------------------------------------------------------------------
 
 //-------------------Sensor data and index constants----------------------------------
@@ -54,7 +58,7 @@ volatile uint8_t dataValues[14] = {
 	13,	//Avståndssensor				8
 	37,	//Träffdetektor					9
 	0,	//Tape values					A
-	7,	//Liv							B
+	3,	//Liv							B
 	1,	//Kontrolläge					C
 	0   //latest_move					D
 };
@@ -78,6 +82,7 @@ const uint8_t TAPE_SENSOR_FRONT_RIGHT = 7;
 const uint8_t DISTANCE_SENSOR = 8;
 const uint8_t HIT_DETECTOR = 9;
 const uint8_t TAPE_VALUES =  10;
+const uint8_t LIFE = 11;
 //----------------------------------------------------------------------------------------
 
 //--------Sensor-control "booleans" to determine behavior the of robot---------------------
@@ -92,6 +97,7 @@ uint8_t frontTapeValues = 0;
 uint8_t frontLeftTape = 0;
 uint8_t frontRightTape = 0;
 uint8_t leftOrRight = 0; //If 0 turn left, 1 turn right
+uint8_t hit = 0;
 
 volatile uint8_t forward = 1;
 volatile uint8_t turning = 0;
@@ -100,6 +106,12 @@ volatile uint8_t backnTurn = 0;
 volatile uint8_t IRFound = 0;
 volatile uint8_t sprayPray = 0;
 volatile uint8_t sprayFlag = 0;
+volatile uint8_t activateHitFlag = 0;
+
+volatile uint8_t hitFlag = 0;
+volatile uint16_t timer0_5sec = 0;
+
+volatile uint8_t lifeCount = 0x07;
 
 uint16_t timerValue = 0;
 //-------------------------------------------------------------------------------------------
@@ -268,6 +280,7 @@ void moveRobot(uint8_t move){
 		SPI_MasterTransmit(move);
 		PORTB |= _BV(PB1);
 	}
+	_delay_us(5);
 	dataValues[13] = move;
 }
 //---------------------------------------------------------------------
@@ -275,6 +288,29 @@ void moveRobot(uint8_t move){
 
 //--------------------------------Timer--------------------------------------
 //---------------------------------------------------------------------------
+
+void timer0_init(){
+	TCNT0 = 0;
+	TCCR0 |= _BV(WGM01) | _BV(CS00) | _BV(CS02); //Set CTC with prescaling 1024
+	TIMSK |= _BV(OCIE0); //Enable interrupt on compare match, compare register 0
+	OCR0 = 250; //Roughly 16 ms, calculated with prescaling of 1024 using the following formula: 0,016 = (1024*x)/(16*10^6)
+	
+}
+
+ISR(TIMER0_COMP_vect){
+	timer0_5sec++;
+	if(timer0_5sec >= 300){
+		timer0_5sec = 0;
+		activateHitFlag = 1;
+		//hitFlag = 0;
+		TCCR0 = 0;
+		TIMSK = 0;
+	}
+	
+	
+}
+
+//------------------------------------------------------------------------------------
 
 void timer_init(){
 	TCNT1 = 0;
@@ -337,10 +373,6 @@ ISR(INT1_vect){
 		tapeThresholdFL = (dataValues[TAPE_SENSOR_FRONT_LEFT] - thresholdOffset);
 		tapeThresholdFR = (dataValues[TAPE_SENSOR_FRONT_RIGHT] - thresholdOffset);
 		
-		/*dataValues[1] = tapeThresholdBL;
-		dataValues[2] = tapeThresholdBR;
-		dataValues[0] = tapeThresholdFL;
-		dataValues[3] = tapeThresholdFR;*/
 	}
 	
 	calibrating += 1;
@@ -390,13 +422,13 @@ void getSensorValues(){
 		PORTB &= ~_BV(PB3);
 		SPI_MasterTransmit(i);
 		PORTB |= _BV(PB3);
-		_delay_us(10);
+		_delay_us(5);
 		
 		
 		PORTB &= ~_BV(PB3);	
 		dataValues[i] = SPI_MasterTransmit(0xAA);
 		PORTB |= _BV(PB3);
-		_delay_us(10);
+		_delay_us(5);
 		
 	}
 	ADConvert();
@@ -420,44 +452,27 @@ void setVariables(){
 	IRBack = dataValues[IR_SENSOR_BACK];
 	sei();
 	
+	cli();
+	hit = dataValues[HIT_DETECTOR];
+	sei();
+	
 	frontLeftTape = frontTapeValues & 0x01;
 	frontRightTape = frontTapeValues & 0x08;
 }
 
-//Inits the timer and tells the AI that is should correct the course of the robot
-void correctCourse(){
-	correctingCourse = 1;
-	timer_init(TIMER_1A_SECOND);
-	//backFlag = 1; 
-	//moveRobot(MOVE_BACK);	
-}
-
-void turn(uint16_t timerValue){
-	correctingCourse = 1;
-	correctCourseStep = 1;
-	timer_init(timerValue);
-}
-
-//Executes the steps that correct the course of the robot by backing for one second and then turning for a second
-void executeCorrectionSteps(){
-	
-	//First step: Move back 
-	if(correctCourseStep == 0){
-		moveRobot(MOVE_BACK);
-	}
-	
-	//Second step: Turn 
-	else if(correctCourseStep == 1){
-		if(leftOrRight == 0){
-			moveRobot(TURN_LEFT);
-		}else if(leftOrRight == 1){
-			moveRobot(TURN_RIGHT);
-		}
+void distanceControl(){
+	if (distanceValue <= 20)
+	{
+		leftOrRight = 1;
+		backing = 1;
+		backnTurn = 1;
+		timerValue = TIMER_1A_SECOND/2;
+		timer_init();
 	}
 }
 
 //Controls the different sensor values and calls functions accordingly 
-void idle(){
+void sensorControl(){
 	moveRobot(DEACTIVATE_LASER);
 	//IMMAFIRINGMALAZORZ = 0;
 	
@@ -539,31 +554,53 @@ int main(void)
 		getSensorValues();
 		setVariables();	
 		
+		dataValues[LIFE] = lifeCount;
 		//Start of AI program that should keep the robot within the boundaries of the tape track
-		/*if(sprayPray){
-			moveRobot(ACTIVATE_LASER);
-			IMMAFIRINGMALAZORZ = 1;
-			turn(TIMER_1A_SECOND/4);
+		
+		moveRobot(LED | lifeCount);
+		
+		if (activateHitFlag){
 			
-		if (IRFront != 4 && IRFront < 8){
-			/*if (!IMMAFIRINGMALAZORZ){
-				moveRobot(ACTIVATE_LASER);
-				IMMAFIRINGMALAZORZ = 1;
-				turn(TIMER_1A_SECOND/2);
-			}*/
-			//moveRobot(STOP);
-			//while(1);
-			/*sprayPray = 1;
+			moveRobot(ACTIVATE_HIT);
+			activateHitFlag = 0;
+			while (1)
+			{moveRobot(STOP);
+			}
 		}
-		else if(correctingCourse == 1){
-			executeCorrectionSteps();
+		
+		else if(hit==1 && !hitFlag){
+			hitFlag = 1;
+			lifeCount = lifeCount >> 1;	
+			timer0_init();
 		}
-		else{
-			idle();
+			
+		//moveRobot(ACTIVATE_HIT);
+			
+		/*if(!lifeCount){
+			moveRobot(STOP);
+			break;
+		}
+		if (activateHitFlag){
+			TCCR0 = 0;
+			moveRobot(IR_ON);
+			moveRobot(ACTIVATE_HIT);
+			activateHitFlag = 0;
+		}
+		
+		if (lifeCount){
+			moveRobot(LED | lifeCount);
+			if(hit == 1 && !hitFlag){
+				hitFlag = 1;
+				lifeCount = lifeCount >> 1;
+				moveRobot(IR_OFF);
+				moveRobot(ACTIVATE_HIT);
+				timer0_init();
+				
+			}
 		}*/
 		
 		if(!sprayPray){
-			idle();
+			sensorControl();
 		}
 		
 		if(turning){

@@ -8,6 +8,7 @@
 
 #define F_CPU 16000000UL
 #define PA1HIGH   ((PINA & (1<<PA1)))
+#define PA0HIGH   ((PINA & (1<<PA0)))
 #define ADCONVERTERFREE !(ADCSRA & (1<<ADSC))
 #define IRHIGH (PINA & (1<<PA3))
 #include <avr/io.h>
@@ -280,7 +281,13 @@ void readIRSensors(){
 }
 
 void readLaserDetector(){
-
+	
+	
+	if(PA0HIGH){
+		hit = 1;
+	}else{
+		hit = 0;
+	}
 }
 
 //Räknar hur många bytes vi har skickat över SPIn
@@ -342,23 +349,25 @@ int main(void)
 	initPorts();
 	SPI_init();
 	sei();
-	DDRD |= _BV(PD4) | _BV(PD5);	
+	DDRD |= _BV(PD4) | _BV(PD5);
+	//DDRD |= _BV(PD6);	
     while(1)
     {
 		if(ADCONVERTERFREE){
 			if(requestedTapeSens == 0){
-				PORTD |= _BV(PD5);
-				PORTD &= ~_BV(PD5);
+				//PORTD |= _BV(PD5);
+				//PORTD &= ~_BV(PD5);
 			}
 			 adc_read(TAPE_NUMS[requestedTapeSens]);	//om vi inte adomvandlar något, starta nästa
 		}
-		//readLaserDetector();
+		readLaserDetector();
 		if(!IRSENSORWAIT){
 			readIRSensors();
 			IRnum++;
 			if(IRnum >= 4) IRnum = 0;
 			
 		}
+
 		if(!(distanceSensorWait || PA1HIGH)) triggerSignal();	//Om vi inte väntar eller echo är hög så kan vi göra en ny trigger-signal
 		/*if(IRSTOPFLAG){	//om vi väntar på innan vi kan använda avståndssensorn igen kan vi passa på att kolla ir-signaler
 			initNextIRSensors();

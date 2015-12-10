@@ -17,11 +17,6 @@
  const uint8_t SLOW = 64;
  const uint8_t FAST = 128;
  
- // fulkod börjar här
- uint8_t LEDbool = 0;
- //fulkod slutar här
- 
- 
  //Variables for compare-interrupts in 8-bit timer 2, values derived from time(s)/(1/(clk/prescaling))
  const uint8_t STARTBIT = 37; //2.4 ms
  const uint8_t LOGICONE = 19; //1.2 ms
@@ -29,7 +24,7 @@
  volatile uint8_t IRState = 0; //0 = "startbit", 1 = "pause"...........
  volatile uint8_t IR_ON = 1;
  
- //Intstruction byte for commands from målsökningsenhet
+ //Instruction byte for commands from målsökningsenhet
  uint8_t command = 0;
  uint8_t cmdH = 0; //The highest bits of the command from målsökning
  uint8_t cmdL = 0; //The lowest bits....
@@ -76,11 +71,14 @@
  				PORTB &= ~_BV(PB3); 
  				OCR2 = LOGICZERO;
  				break;
+			default:
+				break;
  		}
  	
  		if(IRState >= 7) IRState = 0;
  		else IRState++;
 	}
+ 		
  	//Restart counters
  	TCNT0 = 0;
  	TCNT2 = 0;
@@ -167,13 +165,13 @@
  
  //---------------------------------Diods---------------------------------
  //-----------------------------------------------------------------------
- void init_diodPorts(){
+ /*void init_diodPorts(){
  	PORTA |= _BV(PA0) | _BV(PA1) | _BV(PA2); //Alla dioder lyser från början
  }
  
  void decrement_diods(){
  	PORTA >> 1; 
- }
+ }*/
  //------------------------------------------------------------------------
  //------------------------------------------------------------------------
  
@@ -198,44 +196,53 @@
  //--------------------------------Lasorz---------------------------------
  //-----------------------------------------------------------------------
  void controlLaser(uint8_t arg){
-	if(arg) PORTD |= _BV(PD6);
- 	else PORTD &= ~_BV(PD6);
+	 if(arg == 1) PORTD |= _BV(PD6);
+	 else if (arg == 2) PORTD &= ~_BV(PD6);
  }
  
-  //--------------------------------LED------------------------------------
-  //-----------------------------------------------------------------------
+ //--------------------------------LED------------------------------------
+ //-----------------------------------------------------------------------
  void LED(uint8_t arg){
-	 PORTA &= ~(_BV(PA0) | _BV(PA1) | __BV(PA2));
-	 PORTA |= ((arg & ~0xfb) >> 2) << PA0;// 00000x00, 0000000x
-	 PORTA |= ((arg & ~0xfd) >> 1) << PA1;// 00000x00, 0000000x
-	 PORTA |= ((arg & ~0xfe)) << PA2;// 00000x00, 0000000x
+	 PORTA &= ~(_BV(PA0) | _BV(PA1) | _BV(PA2));
 	 
+	 if ((arg & 1)){
+		 PORTA |= _BV(PA0);
+	 }
+	 if ((arg & 2)){
+		 PORTA |= _BV(PA1);
+	 }
+	 if ((arg & 4)){
+		 PORTA |= _BV(PA2);
+	 }
+	 
+	 //PORTA |= ((arg & ~0xfb) >> 2) << PA0;// 00000x00, 0000000x
+	 //PORTA |= ((arg & ~0xfd) >> 1) << PA1;// 00000x00, 0000000x
+	 //PORTA |= ((arg & ~0xfe)) << PA2;// 00000x00, 0000000x
  }
-  
+ 
  //-----------------------IR-Signal och Skottdetektor---------------------
  //-----------------------------------------------------------------------
  void infraRed(uint8_t arg){
-	if(arg == 1){
-		//IR AV, PB3 = 0
-		IR_ON = 0;
-		TCCR0 = 0; // Normal port operation pb3
-		IRState = 0;
-		OCR2 = STARTBIT;
-		PORTB &= ~_BV(PB3);
-	}
-	else if(arg == 2){
-		//IR PÅ, PB3 = 1
-		IR_ON = 1;
-		PORTD |= _BV(PB3);
-	}
-	else if(arg ==3){
-		//aktivera skottdetektor, PA3 sätts till 1 sedan 0
-		PORTA |= _BV(PA3);
-		PORTA &= ~_BV(PA3);
-	}
- } 
- //-----------------------------------------------------------------------
- //-----------------------------------------------------------------------
+	 if(arg == 1){
+		 //IR AV, PB3 = 0
+		 IR_ON = 0;
+		 TCCR0 = 0; // Normal port operation pb3
+		 IRState = 0;
+		 OCR2 = STARTBIT;
+		 PORTB &= ~_BV(PB3);
+	 }
+	 else if(arg == 2){
+		 //IR PÅ, PB3 = 1
+		 IR_ON = 1;
+		 TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00); //Register settings for an alternating signal of 38 KHz
+	 }
+	 else if(arg == 3){
+		 //aktivera skottdetektor, PA3 sätts till 1 sedan 0
+		 PORTA |= _BV(PA3);
+		 //_delay_us(1000);
+		 PORTA &= ~_BV(PA3);
+	 }
+ }
  
  int main(void)
  {
@@ -249,22 +256,34 @@
  	OCR1B = 0; //right
  	
  	PORTD |= _BV(PD2); //right, 0 backward and 1 forward
- 	PORTD |=  _BV(PD3); //left, 1 backward and 0 forward
+ 	PORTD |= _BV(PD3); //left, 1 backward and 0 forward
  	
  	while(1)
  	{
-		 if(cmdH == 1)
-		 {
-			 setMotors(cmdL);
-		 }
-		 else if(cmdH == 2){
- 			controlLaser(cmdL);
-		 }
-		 else if(cmdH == 3){
-			 infraRed(cmdL);
-		 }
-		 else if(cmdH == 4){
-			 LED(cmdL);
-		 }
+ 		if(cmdH == 1){
+ 			setMotors(cmdL);
+ 		}
+		else if(cmdH == 2){
+			controlLaser(cmdL);
+		}
+		else if(cmdH == 3){
+			infraRed(cmdL);
+		}
+		else if(cmdH == 4){
+			LED(cmdL);
+			
+		}
+		if (cmdH) cmdH = 0;
+		 /*
+		else if(cmdH == 2){
+ 			if(cmdL == 1){
+				 activateLaser();
+			 }else if(cmdL == 2){
+				 deactivateLaser();
+			 }
+ 		}
+		else if(cmdH == 5){
+			activateLaserDetector();
+		}*/
  	}
  }
