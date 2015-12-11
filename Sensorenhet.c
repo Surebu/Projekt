@@ -281,11 +281,10 @@ void readIRSensors(){
 }
 
 void readLaserDetector(){
-	
-	
 	if(PA0HIGH){
 		hit = 1;
-	}else{
+	}
+	else{
 		hit = 0;
 	}
 }

@@ -1,3 +1,4 @@
+
 /*
  * TargetingModule_SPI_.c
  *
@@ -39,10 +40,10 @@ const uint8_t TURN_LEFT = 0x1D;
 const uint8_t STOP = 0x10;
 const uint8_t ACTIVATE_LASER = 0x21;
 const uint8_t DEACTIVATE_LASER = 0x22;
-const uint8_t IR_OFF = 0x31; 
-const uint8_t IR_ON = 0x32;
 const uint8_t ACTIVATE_HIT = 0x33;
 const uint8_t LED = 0x40;
+const uint8_t IR_OFF = 0x31;
+const uint8_t IR_ON = 0x32;
 //------------------------------------------------------------------------------------
 
 //-------------------Sensor data and index constants----------------------------------
@@ -58,7 +59,7 @@ volatile uint8_t dataValues[14] = {
 	13,	//Avståndssensor				8
 	37,	//Träffdetektor					9
 	0,	//Tape values					A
-	3,	//Liv							B
+	7,	//Liv							B
 	1,	//Kontrolläge					C
 	0   //latest_move					D
 };
@@ -82,7 +83,7 @@ const uint8_t TAPE_SENSOR_FRONT_RIGHT = 7;
 const uint8_t DISTANCE_SENSOR = 8;
 const uint8_t HIT_DETECTOR = 9;
 const uint8_t TAPE_VALUES =  10;
-const uint8_t LIFE = 11;
+const uint8_t LIFE =  11; 
 //----------------------------------------------------------------------------------------
 
 //--------Sensor-control "booleans" to determine behavior the of robot---------------------
@@ -94,8 +95,11 @@ uint8_t IRFront = 8;
 uint8_t IRBack = 8;
 
 uint8_t frontTapeValues = 0;
+uint8_t backTapeValues = 0;
 uint8_t frontLeftTape = 0;
 uint8_t frontRightTape = 0;
+uint8_t backLeftTape = 0;
+uint8_t backRightTape = 0;
 uint8_t leftOrRight = 0; //If 0 turn left, 1 turn right
 uint8_t hit = 0;
 
@@ -106,9 +110,11 @@ volatile uint8_t backnTurn = 0;
 volatile uint8_t IRFound = 0;
 volatile uint8_t sprayPray = 0;
 volatile uint8_t sprayFlag = 0;
-volatile uint8_t activateHitFlag = 0;
+volatile uint8_t hitFlag = 1;
+volatile uint8_t TapeFlag = 0;
+volatile uint8_t counting = 0;
 
-volatile uint8_t hitFlag = 0;
+volatile uint8_t activateHitFlag = 0;
 volatile uint16_t timer0_5sec = 0;
 
 volatile uint8_t lifeCount = 0x07;
@@ -135,7 +141,6 @@ volatile uint8_t correctCourseStep = 0; //Which step the robot is on in its cour
 	PORTB |= _BV(PB4);
 	_delay_us(115);
 }
-
 short adcToAngularRate(unsigned short adcValue){
 	short vOutAngularRate = (adcValue * 25/12)+400;  // in mV (millivolts)
 	return vOutAngularRate;
@@ -145,7 +150,6 @@ short adcToAngularRate(unsigned short adcValue){
 	// E2 is 13,33 and R2 is 26,67 mV/deg
 	// change accordingly.
 }
-
 void getGyroValue(){
 	PORTB &= ~_BV(PB4);
 	data += SPI_MasterTransmit(ADCC);
@@ -153,7 +157,6 @@ void getGyroValue(){
 	data += SPI_MasterTransmit(0x00);
 	PORTB |= _BV(PB4);
 	_delay_us(115);
-
 	PORTB &= ~_BV(PB4);
 	data += SPI_MasterTransmit(ADCR);
 	dataH = SPI_MasterTransmit(0x00); //MSBs
@@ -280,7 +283,6 @@ void moveRobot(uint8_t move){
 		SPI_MasterTransmit(move);
 		PORTB |= _BV(PB1);
 	}
-	_delay_us(5);
 	dataValues[13] = move;
 }
 //---------------------------------------------------------------------
@@ -288,29 +290,6 @@ void moveRobot(uint8_t move){
 
 //--------------------------------Timer--------------------------------------
 //---------------------------------------------------------------------------
-
-void timer0_init(){
-	TCNT0 = 0;
-	TCCR0 |= _BV(WGM01) | _BV(CS00) | _BV(CS02); //Set CTC with prescaling 1024
-	TIMSK |= _BV(OCIE0); //Enable interrupt on compare match, compare register 0
-	OCR0 = 250; //Roughly 16 ms, calculated with prescaling of 1024 using the following formula: 0,016 = (1024*x)/(16*10^6)
-	
-}
-
-ISR(TIMER0_COMP_vect){
-	timer0_5sec++;
-	if(timer0_5sec >= 300){
-		timer0_5sec = 0;
-		activateHitFlag = 1;
-		//hitFlag = 0;
-		TCCR0 = 0;
-		TIMSK = 0;
-	}
-	
-	
-}
-
-//------------------------------------------------------------------------------------
 
 void timer_init(){
 	TCNT1 = 0;
@@ -321,20 +300,10 @@ void timer_init(){
 
 //Interrupt that increments and resets the variables determining the behavior of the course-correction of the robot
 ISR(TIMER1_COMPA_vect){
-	
-	/*if(backFlag == 1){
-		backFlag = 0;
-		turnFlag = 1;
-	}else if(turnFlag == 1){		
-		turnFlag = 0;
-		TCCR1B = 0;
-	}*/
-	/*correctCourseStep += 1;
-	if(correctCourseStep == 2){
-		correctCourseStep = 0;
-		correctingCourse = 0;
-		TCCR1B = 0;
-	}*/
+
+	if(!lifeCount){
+		counting += 1;
+	}
 	if (backnTurn){
 		backnTurn = 0;
 		turning = 1;
@@ -352,6 +321,7 @@ ISR(TIMER1_COMPA_vect){
 		IRFound = 0;
 		sprayPray = 0;
 		sprayFlag = 0;
+		
 	}
 }
 //---------------------------------------------------------------------
@@ -373,6 +343,10 @@ ISR(INT1_vect){
 		tapeThresholdFL = (dataValues[TAPE_SENSOR_FRONT_LEFT] - thresholdOffset);
 		tapeThresholdFR = (dataValues[TAPE_SENSOR_FRONT_RIGHT] - thresholdOffset);
 		
+		/*dataValues[1] = tapeThresholdBL;
+		dataValues[2] = tapeThresholdBR;
+		dataValues[0] = tapeThresholdFL;
+		dataValues[3] = tapeThresholdFR;*/
 	}
 	
 	calibrating += 1;
@@ -422,13 +396,13 @@ void getSensorValues(){
 		PORTB &= ~_BV(PB3);
 		SPI_MasterTransmit(i);
 		PORTB |= _BV(PB3);
-		_delay_us(5);
+		_delay_us(10);
 		
 		
 		PORTB &= ~_BV(PB3);	
 		dataValues[i] = SPI_MasterTransmit(0xAA);
 		PORTB |= _BV(PB3);
-		_delay_us(5);
+		_delay_us(10);
 		
 	}
 	ADConvert();
@@ -438,7 +412,10 @@ void getSensorValues(){
 void setVariables(){
 	//Mutexlock, clisei-senpai!!!!!
 	cli();
-	frontTapeValues = dataValues[TAPE_VALUES] & 0x09;
+	frontLeftTape = dataValues[TAPE_VALUES] & 0x01;
+	frontRightTape = dataValues[TAPE_VALUES] & 0x08;
+	backLeftTape = dataValues[TAPE_VALUES] & 0x02;
+	backRightTape = dataValues[TAPE_VALUES] & 0x04;
 	sei();
 	
 	cli();
@@ -456,23 +433,12 @@ void setVariables(){
 	hit = dataValues[HIT_DETECTOR];
 	sei();
 	
-	frontLeftTape = frontTapeValues & 0x01;
-	frontRightTape = frontTapeValues & 0x08;
-}
-
-void distanceControl(){
-	if (distanceValue <= 20)
-	{
-		leftOrRight = 1;
-		backing = 1;
-		backnTurn = 1;
-		timerValue = TIMER_1A_SECOND/2;
-		timer_init();
-	}
+	/*frontLeftTape = frontTapeValues & 0x01;
+	frontRightTape = frontTapeValues & 0x08;*/
 }
 
 //Controls the different sensor values and calls functions accordingly 
-void sensorControl(){
+void idle(){
 	moveRobot(DEACTIVATE_LASER);
 	//IMMAFIRINGMALAZORZ = 0;
 	
@@ -502,7 +468,7 @@ void sensorControl(){
 		//correctCourse();
 	}
 	
-	else if (IRFront != 4 && IRFront < 8){
+	else if (IRFront != 2 && IRFront < 8){
 		moveRobot(ACTIVATE_LASER);
 		sprayPray = 1;
 		turning = 1;
@@ -512,7 +478,7 @@ void sensorControl(){
 	
 	else if (!IRFound){
 		
-		if(IRLeft != 4 && IRLeft < 8){
+		if(IRLeft != 2 && IRLeft < 8){
 			//moveRobot(ACTIVATE_LASER);
 			leftOrRight = 0;
 			turning = 1;
@@ -522,7 +488,7 @@ void sensorControl(){
 			//turn(TIMER_1A_SECOND);
 		}
 	
-		else if(IRRight != 4 && IRRight < 8){
+		else if(IRRight != 2 && IRRight < 8){
 			//moveRobot(ACTIVATE_LASER);
 			leftOrRight = 1;
 			turning = 1;
@@ -540,6 +506,60 @@ void sensorControl(){
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
+//--------------------------------Timer--------------------------------------
+//---------------------------------------------------------------------------
+
+void timer0_init(){
+	TCNT0 = 0;
+	TCCR0 |= _BV(WGM01) | _BV(CS00) | _BV(CS02); //Set CTC with prescaling 1024
+	TIMSK |= _BV(OCIE0); //Enable interrupt on compare match, compare register 0
+	OCR0 = 250; //Roughly 16 ms, calculated with prescaling of 1024 using the following formula: 0,016 = (1024*x)/(16*10^6)
+	
+}
+
+ISR(TIMER0_COMP_vect){
+	timer0_5sec++;
+	if(timer0_5sec >= 300){
+		timer0_5sec = 0;
+		activateHitFlag = 1;
+		//hitFlag = 0;
+		TCCR0 = 0;
+		TIMSK &= ~_BV(OCIE0);
+	}
+}
+//------------------------------------------------------------------------------------
+
+void sensorControlDead(){
+	
+	if (distanceValue <= 20)
+	{
+		TapeFlag = 0;
+		counting = 0;
+		leftOrRight = 1;
+		backing = 1;
+		backnTurn = 1;
+		timerValue = TIMER_1A_SECOND/2;
+		timer_init();
+		//correctCourse();
+	}
+	else if(frontLeftTape != 0){
+		
+		TapeFlag = _BV(3);
+	}
+	else if(frontRightTape != 0){
+		TapeFlag = _BV(0);
+	}
+	else if(backLeftTape != 0){
+		
+		TapeFlag = _BV(2);
+	}
+	else if(backRightTape != 0){
+		TapeFlag = _BV(1);
+	}
+	
+	
+}
+
 int main(void)
 {
 	SPI_MasterInit();
@@ -547,7 +567,7 @@ int main(void)
 	interruptINT1_init();
 	sei();
 	btTransmit(0);
-	
+	//moveRobot(ACTIVATE_HIT);
     while(1)
     {
 		BT_SensorValues();
@@ -555,58 +575,57 @@ int main(void)
 		setVariables();	
 		
 		dataValues[LIFE] = lifeCount;
-		//Start of AI program that should keep the robot within the boundaries of the tape track
 		
+		//Start of AI program that should keep the robot within the boundaries of the tape track
 		moveRobot(LED | lifeCount);
 		
-		if (activateHitFlag){
-			
-			moveRobot(ACTIVATE_HIT);
-			activateHitFlag = 0;
-			while (1)
-			{moveRobot(STOP);
+		if(!lifeCount){
+			sensorControlDead();
+			if(TapeFlag >= 0x09 && counting == 0){
+				counting = 1;
+				timerValue = TIMER_1A_SECOND;
+				timer_init();
+			}else if(counting == 2){
+				while(1){
+					moveRobot(STOP);
+				}
 			}
-		}
-		
-		else if(hit==1 && !hitFlag){
-			hitFlag = 1;
-			lifeCount = lifeCount >> 1;	
-			timer0_init();
-		}
 			
-		//moveRobot(ACTIVATE_HIT);
 			
-		/*if(!lifeCount){
-			moveRobot(STOP);
-			break;
-		}
-		if (activateHitFlag){
-			TCCR0 = 0;
-			moveRobot(IR_ON);
-			moveRobot(ACTIVATE_HIT);
-			activateHitFlag = 0;
-		}
-		
-		if (lifeCount){
-			moveRobot(LED | lifeCount);
-			if(hit == 1 && !hitFlag){
-				hitFlag = 1;
-				lifeCount = lifeCount >> 1;
-				moveRobot(IR_OFF);
-				moveRobot(ACTIVATE_HIT);
-				timer0_init();
+		}else{
 				
+			if(hit == 0){
+				activateHitFlag = 0;
+				hitFlag = 1;
 			}
-		}*/
-		
-		if(!sprayPray){
-			sensorControl();
+			
+			if (hit == 1 && activateHitFlag)
+			{
+				moveRobot(IR_ON);
+				moveRobot(ACTIVATE_HIT);
+			}
+			
+			else if(hit == 1 && hitFlag == 1){
+				hitFlag = 0;
+				lifeCount = lifeCount >> 1;
+				timer0_init();
+			}
+			
+			else if (hit == 1 && !activateHitFlag){
+				moveRobot(IR_OFF);
+			}
+			
+			
+			if(!sprayPray){
+				idle();
+			}
 		}
-		
+			
 		if(turning){
 			if(leftOrRight == 0){
 				moveRobot(TURN_LEFT);
-			}else if(leftOrRight == 1){
+			}
+			else if(leftOrRight == 1){
 				moveRobot(TURN_RIGHT);
 			}
 		}
@@ -617,5 +636,6 @@ int main(void)
 			moveRobot(MOVE_FORWARD_FAST);
 			forward = 0;
 		}
-    }
+		
+	}
 }

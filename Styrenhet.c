@@ -39,38 +39,46 @@
  				OCR2 = STARTBIT; //Set time to next interrupt
  				TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00); //Register settings for an alternating signal of 38 KHz
  				break;
+				 
  			case 1://pause
  				TCCR0 = 0; //Normal port function
  				PORTB &= ~_BV(PB3); //Force output zero
  				OCR2 = LOGICZERO; //Set time to next interrupt
  				break;
+				 
  			case 2://0
  				OCR2 = LOGICZERO;
  				TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
  				break;
+				 
  			case 3://pause
  				TCCR0 = 0; 
  				PORTB &= ~_BV(PB3); 
  				OCR2 = LOGICZERO;
  				break;
+				 
  			case 4://0
- 				OCR2 = LOGICZERO;
+ 				OCR2 = LOGICONE;
  				TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
  				break;
+				 
  			case 5://pause
  				TCCR0 = 0;
  				PORTB &= ~_BV(PB3); 
  				OCR2 = LOGICZERO;
- 				break;		
+ 				break;	
+				 	
  			case 6://1		
- 				OCR2 = LOGICONE;
+ 				OCR2 = LOGICZERO;
  				TCCR0 |= (1<<WGM01)|(1<<COM00)|(1<<WGM01)|(1<<CS00);
  				break;
+				 
  			case 7://pause
  				TCCR0 = 0; 
  				PORTB &= ~_BV(PB3); 
  				OCR2 = LOGICZERO;
  				break;
+				 
 			default:
 				break;
  		}
@@ -187,8 +195,6 @@
  //Interrupt routine for SPI-transmission
  ISR(SPI_STC_vect){ //www.avrfreaks.net/forum/spif-flag-spi-interface
  	command = SPDR;
- 	cmdH = command >> 4;
- 	cmdL = command & 0x0F;	
  }
  //-----------------------------------------------------------------------
  //-----------------------------------------------------------------------
@@ -244,6 +250,12 @@
 	 }
  }
  
+ void setCmdHL(){
+	 cli();
+	 cmdH = command >> 4;
+	 cmdL = command & 0x0F;
+	 sei();
+ }
  int main(void)
  {
  	timer_init();
@@ -260,6 +272,7 @@
  	
  	while(1)
  	{
+		 setCmdHL();
  		if(cmdH == 1){
  			setMotors(cmdL);
  		}
