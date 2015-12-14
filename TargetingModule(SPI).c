@@ -94,7 +94,7 @@ uint8_t IRRight = 8;
 uint8_t IRFront = 8;
 uint8_t IRBack = 8;
 
-uint8_t frontTapeValues = 0;
+//uint8_t frontTapeValues = 0;
 uint8_t backTapeValues = 0;
 uint8_t frontLeftTape = 0;
 uint8_t frontRightTape = 0;
@@ -113,9 +113,11 @@ volatile uint8_t sprayFlag = 0;
 volatile uint8_t hitFlag = 1;
 volatile uint8_t TapeFlag = 0;
 volatile uint8_t counting = 0;
+volatile uint8_t laserCd = 0; //1 if laser is on cooldown, 0 if it isn't
 
 volatile uint8_t activateHitFlag = 0;
 volatile uint16_t timer0_5sec = 0;
+volatile uint16_t timer2_3sec = 0;
 
 volatile uint8_t lifeCount = 0x07;
 
@@ -288,8 +290,46 @@ void moveRobot(uint8_t move){
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
 
-//--------------------------------Timer--------------------------------------
+//--------------------------------Timers-------------------------------------
 //---------------------------------------------------------------------------
+
+void timer0_init(){
+	TCNT0 = 0;
+	TCCR0 |= _BV(WGM01) | _BV(CS00) | _BV(CS02); //Set CTC with prescaling 1024
+	TIMSK |= _BV(OCIE0); //Enable interrupt on compare match, compare register 0
+	OCR0 = 250; //Roughly 16 ms, calculated with prescaling of 1024 using the following formula: 0,016 = (1024*x)/(16*10^6)
+	
+}
+
+ISR(TIMER0_COMP_vect){
+	timer0_5sec++;
+	if(timer0_5sec >= 300){
+		timer0_5sec = 0;
+		activateHitFlag = 1;
+		//hitFlag = 0;
+		TCCR0 = 0;
+		TIMSK &= ~_BV(OCIE0);
+	}
+}
+
+//Laser cooldown
+void timer2_init(){
+	TCNT2 = 0;
+	TCCR2 |= _BV(WGM21) | _BV(CS20) | _BV(CS21) | _BV(CS22); //Set CTC with prescaling 1024
+	TIMSK |= _BV(OCIE2); //Enable interrupt on compare match, compare register 0
+	OCR2 = 250; //Roughly 16 ms, calculated with prescaling of 1024 using the following formula: 0,016 = (1024*x)/(16*10^6)
+	
+}
+
+ISR(TIMER2_COMP_vect){
+	timer2_3sec++;
+	if(timer2_3sec >= 188){
+		timer2_3sec = 0;
+		laserCd = 0;
+		TCCR2 = 0;
+		TIMSK &= ~_BV(OCIE2);
+	}
+}
 
 void timer_init(){
 	TCNT1 = 0;
@@ -301,10 +341,11 @@ void timer_init(){
 //Interrupt that increments and resets the variables determining the behavior of the course-correction of the robot
 ISR(TIMER1_COMPA_vect){
 
-	if(!lifeCount){
+	if(!lifeCount && counting == 1){
 		counting += 1;
 	}
 	if (backnTurn){
+		OCR1A = TIMER_1A_SECOND*0.75;
 		backnTurn = 0;
 		turning = 1;
 		backing = 0;
@@ -313,6 +354,16 @@ ISR(TIMER1_COMPA_vect){
 		leftOrRight = !leftOrRight;
 		OCR1A = 2*timerValue;
 		sprayFlag = 1;
+	}
+	else if(sprayPray && sprayFlag){
+		timer2_init();
+		laserCd = 1;
+		forward = 1;
+		turning = 0;
+		backing = 0;
+		IRFound = 0;
+		sprayPray = 0;
+		sprayFlag = 0;
 	}
 	else{
 		forward = 1;
@@ -440,40 +491,45 @@ void setVariables(){
 //Controls the different sensor values and calls functions accordingly 
 void idle(){
 	moveRobot(DEACTIVATE_LASER);
-	//IMMAFIRINGMALAZORZ = 0;
 	
 	if (distanceValue <= 20)
 	{
 		leftOrRight = 1;
-		backing = 1;
-		backnTurn = 1;
-		timerValue = TIMER_1A_SECOND/2;
+		turning = 1;
+		//backing = 1;
+		//backnTurn = 1;
+		timerValue = TIMER_1A_SECOND*0.75;
 		timer_init();
-		//correctCourse();
 	}
-	else if(frontLeftTape != 0){
-		leftOrRight = 1;
-		backing = 1;
-		backnTurn = 1;
-		timerValue = TIMER_1A_SECOND/2;
-		timer_init();
-		//correctCourse();
-	}
-	else if(frontRightTape != 0){
-		leftOrRight = 0;
-		backing = 1;
-		backnTurn = 1;
-		timerValue = TIMER_1A_SECOND/2;
-		timer_init();
-		//correctCourse();
+	
+	else if(!backing && !turning){
+		if(frontLeftTape != 0){
+			leftOrRight = 1;
+			backing = 1;
+			backnTurn = 1;
+			timerValue = TIMER_1A_SECOND/2;
+			timer_init();
+		}
+		else if(frontRightTape != 0){
+			leftOrRight = 0;
+			backing = 1;
+			backnTurn = 1;
+			timerValue = TIMER_1A_SECOND/2;
+			timer_init();
+		}
 	}
 	
 	else if (IRFront != 2 && IRFront < 8){
-		moveRobot(ACTIVATE_LASER);
-		sprayPray = 1;
-		turning = 1;
-		timerValue = TIMER_1A_SECOND/4;
-		timer_init();
+		if(!laserCd){
+			moveRobot(ACTIVATE_LASER);
+			sprayPray = 1;
+			turning = 1;
+			timerValue = TIMER_1A_SECOND/4;
+			timer_init();
+		}
+		else{
+			forward = 1;
+		}	
 	}
 	
 	else if (!IRFound){
@@ -505,29 +561,6 @@ void idle(){
 }
 //---------------------------------------------------------------------
 //---------------------------------------------------------------------
-
-//--------------------------------Timer--------------------------------------
-//---------------------------------------------------------------------------
-
-void timer0_init(){
-	TCNT0 = 0;
-	TCCR0 |= _BV(WGM01) | _BV(CS00) | _BV(CS02); //Set CTC with prescaling 1024
-	TIMSK |= _BV(OCIE0); //Enable interrupt on compare match, compare register 0
-	OCR0 = 250; //Roughly 16 ms, calculated with prescaling of 1024 using the following formula: 0,016 = (1024*x)/(16*10^6)
-	
-}
-
-ISR(TIMER0_COMP_vect){
-	timer0_5sec++;
-	if(timer0_5sec >= 300){
-		timer0_5sec = 0;
-		activateHitFlag = 1;
-		//hitFlag = 0;
-		TCCR0 = 0;
-		TIMSK &= ~_BV(OCIE0);
-	}
-}
-//------------------------------------------------------------------------------------
 
 void sensorControlDead(){
 	
