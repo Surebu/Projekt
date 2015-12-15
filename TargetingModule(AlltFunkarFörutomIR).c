@@ -399,10 +399,10 @@ ISR(INT1_vect){
 		floorFL = (dataValues[TAPE_SENSOR_FRONT_LEFT]);
 		floorFR = (dataValues[TAPE_SENSOR_FRONT_RIGHT]);
 		
-		tapeThresholdFL = ((tapeFL)*15 + (floorFL)*12)/27;
-		tapeThresholdFR = ((tapeFR)*15 + (floorFR)*12)/27;
-		dataValues[TAPE_SENSOR_BACK_LEFT] = tapeThresholdFL;
-		dataValues[TAPE_SENSOR_BACK_RIGHT] = tapeThresholdFR;
+		tapeThresholdFL = ((tapeFL) + (floorFL))/2;
+		tapeThresholdFR = ((tapeFR) + (floorFR))/2;
+		dataValues[TAPE_SENSOR_FRONT_LEFT] = tapeThresholdFL;
+		dataValues[TAPE_SENSOR_FRONT_RIGHT] = tapeThresholdFR;
 	}
 	calibrating += 1;
 }
@@ -446,26 +446,18 @@ void ADConvert(){
 
 //Gets all the sensor values from sensorenheten via the SPI-bus
 void getSensorValues(){
-	uint8_t temp = 0;
 	for(uint8_t i = 0; i < RETRIEVABLE_SENSOR_DATA; ++i){
-		if(i != 1 && i != 5 && i != 6){
 		
-			PORTB &= ~_BV(PB3);
-			SPI_MasterTransmit(i);
-			PORTB |= _BV(PB3);
-			_delay_us(10);
-			
-			
-			PORTB &= ~_BV(PB3);
-			temp = SPI_MasterTransmit(0xAA);
-			PORTB |= _BV(PB3);
-			
-			cli();
-			dataValues[i] = temp;
-			sei();
-			
-			_delay_us(10);
-		}
+		PORTB &= ~_BV(PB3);
+		SPI_MasterTransmit(i);
+		PORTB |= _BV(PB3);
+		_delay_us(10);
+		
+		
+		PORTB &= ~_BV(PB3);	
+		dataValues[i] = SPI_MasterTransmit(0xAA);
+		PORTB |= _BV(PB3);
+		_delay_us(10);
 		
 	}
 	ADConvert();
@@ -474,28 +466,11 @@ void getSensorValues(){
 //Sets the variables being used in the AI program that needs the sensor values
 void setVariables(){
 	//Mutexlock, clisei-senpai!!!!!
-	IRBack |= forward;
-	IRBack |= turning << 1;
-	IRBack |= backing << 2;
-	IRBack |= backnTurn << 3;
-	IRBack |= IRFound << 4;
-	IRBack |= sprayPray << 5;
-	IRBack |= sprayFlag << 6;
-	IRBack |= hitFlag << 7;
-	
-	backRightTape |= TapeFlag;
-	backRightTape |= counting << 1;
-	backRightTape |= laserCd << 2;
-	backRightTape |= activateHitFlag << 3;
-	
-	dataValues[TAPE_SENSOR_BACK_RIGHT] = backRightTape;
-	dataValues[IR_SENSOR_BACK] = IRBack;
-	
 	cli();
 	frontLeftTape = dataValues[TAPE_VALUES] & 0x01;
 	frontRightTape = dataValues[TAPE_VALUES] & 0x08;
 	backLeftTape = dataValues[TAPE_VALUES] & 0x02;
-	//backRightTape = dataValues[TAPE_VALUES] & 0x04;
+	backRightTape = dataValues[TAPE_VALUES] & 0x04;
 	sei();
 	
 	cli();
@@ -506,12 +481,11 @@ void setVariables(){
 	IRLeft = dataValues[IR_SENSOR_LEFT];
 	IRRight = dataValues[IR_SENSOR_RIGHT];
 	IRFront = dataValues[IR_SENSOR_FRONT];
-	//IRBack = dataValues[IR_SENSOR_BACK];
+	IRBack = dataValues[IR_SENSOR_BACK];
 	sei();
 	
 	cli();
 	hit = dataValues[HIT_DETECTOR];
-	dataValues[LIFE] = lifeCount;
 	sei();
 	
 	/*frontLeftTape = frontTapeValues & 0x01;
@@ -531,21 +505,22 @@ void idle(){
 		timer_init();
 	}
 	
-	else if(frontLeftTape != 0){
-		leftOrRight = 1;
-		backing = 1;
-		backnTurn = 1;
-		timerValue = TIMER_1A_SECOND/2;
-		timer_init();
+	else if(!backing && !turning){
+		if(frontLeftTape != 0){
+			leftOrRight = 1;
+			backing = 1;
+			backnTurn = 1;
+			timerValue = TIMER_1A_SECOND/2;
+			timer_init();
+		}
+		else if(frontRightTape != 0){
+			leftOrRight = 0;
+			backing = 1;
+			backnTurn = 1;
+			timerValue = TIMER_1A_SECOND/2;
+			timer_init();
+		}
 	}
-	else if(frontRightTape != 0){
-		leftOrRight = 0;
-		backing = 1;
-		backnTurn = 1;
-		timerValue = TIMER_1A_SECOND/2;
-		timer_init();
-	}
-	
 	
 	else if (IRFront != 2 && IRFront < 8){
 		if(!laserCd){
@@ -601,6 +576,7 @@ void sensorControlDead(){
 		backnTurn = 1;
 		timerValue = TIMER_1A_SECOND/2;
 		timer_init();
+		//correctCourse();
 	}
 	else if(frontLeftTape != 0){		
 		TapeFlag |= _BV(0);
@@ -617,12 +593,14 @@ int main(void)
 	interruptINT1_init();
 	sei();
 	btTransmit(0);
-
+	//moveRobot(ACTIVATE_HIT);
     while(1)
     {
+		BT_SensorValues();
 		getSensorValues();
 		setVariables();	
-		BT_SensorValues();
+		
+		dataValues[LIFE] = lifeCount;
 		
 		//Start of AI program that should keep the robot within the boundaries of the tape track
 		moveRobot(LED | lifeCount);
