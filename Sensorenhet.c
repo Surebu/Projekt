@@ -21,7 +21,7 @@ volatile uint16_t newDistance = 0; // in cm
 volatile uint8_t distanceSensorWait = 0;
 volatile uint8_t IRSTOPFLAG = 1;
 volatile uint8_t IRSENSORWAIT = 0;
-uint8_t IRsignals[4];
+uint8_t IRsignals[4] = {8,8,8,8};
 uint8_t analogTapeValues[4];
 uint8_t TapeValues;
 
@@ -51,7 +51,7 @@ uint8_t hit = 0;
 
 //AD omvandling
 volatile uint8_t requestedTapeSens = 0;
-const uint8_t TAPE_NUMS[4] = {6,7,5,4};
+const uint8_t TAPE_NUMS[4] = {6,5,7,4};
 
 
 ISR(INT0_vect){	//initierar räkning av avstånd med hjälp av timers		
@@ -74,11 +74,7 @@ ISR(TIMER2_COMP_vect){
 		TCCR2 = 0;
 	}
 }
-/*
-ISR(TIMER1_COMPA_vect){
-	IRSTOPFLAG = 1;
-}
-*/
+
 void enableInterrupts(){
 	GICR = 1<<INT0;					// Enable INT0
 	MCUCR = 1<<ISC01 | 1<<ISC00;	// Trigger INT0 on rising edge	
@@ -88,7 +84,6 @@ void initPorts(){
 	DDRA |= _BV(PA2);									//PA2 triggersignal dist.
 	DDRB = 0xFF;	//test
 }
-
 
 
 void initADConverter(){
@@ -169,7 +164,7 @@ ISR(TIMER1_COMPA_vect){
 	if(!IRSENSORWAIT){
 		IRSTOPFLAG = 1;
 		IRSENSORWAIT = 1;
-		OCR1A = 25000;		//vänta i 0.1s innan vi läser igen
+		OCR1A = 10000;		//vänta i 0.1s innan vi läser igen
 	}
 	else if(IRSENSORWAIT){
 		OCR1A = 4000;
@@ -249,7 +244,7 @@ void readIRSensor(uint8_t num){
 					else if (TCNT0 >= 60 && state == 1)
 					{
 						data = data << 1;
-						data++;
+						data++; //+=4
 						cnt++;
 					}
 					else if (TCNT0 >= 30 && state == 1)
@@ -360,9 +355,14 @@ int main(void)
 			 adc_read(TAPE_NUMS[requestedTapeSens]);	//om vi inte adomvandlar något, starta nästa
 		}
 		readLaserDetector();
+		
 		if(!IRSENSORWAIT){
 			readIRSensors();
 			IRnum++;
+			if(IRnum == 1){
+				IRsignals[IRnum] = 8;
+				IRnum = 2;
+			}
 			if(IRnum >= 4) IRnum = 0;
 			
 		}
