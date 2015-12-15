@@ -7,7 +7,7 @@
   *  
   */ 
  
- #define F_CPU 16000000UL //OBS 16000000UL OM den externa klockan används
+ #define F_CPU 16000000UL //OBS 16000000UL OM den externa klockan används  
  
  #include <avr/io.h>
  #include <util/delay.h>
@@ -137,51 +137,43 @@
  * Sätter hastighet och riktning på motorpar.
  * Tar in pekare till OCR för motorparet, vilken pinne som är motorparets direction och ett argument att sätta motorparet till(se DS).
  */
- void setMotorPair(volatile uint8_t* OCRx, int PDx, uint8_t arg ){
- 	if((OCRx == &OCR1A && arg == 1) || (OCRx == &OCR1B &&  arg  != 1)){ // Om motorpar 1 och backa eller motorpar 2 och inte backa 
+ void setMotorPair(volatile uint8_t OCRx, int PDx, uint8_t arg ){
+ 	if((OCRx == 1 && arg == 1) || (OCRx == 2 &&  arg  != 1)){ // Om motorpar 1 och backa eller motorpar 2 och inte backa 
  		PORTD &= ~_BV(PDx);		//sätt dir till 0
  	}
  	else PORTD |= _BV(PDx);		//annars sätt dir till 1
  	switch(arg){
  		case 0:
- 			*OCRx = STOP; 
+			if(OCRx == 1) OCR1A = STOP;
+			else OCR1B = STOP; 
  			break;
  		case 1:
- 			*OCRx = FAST;
+			if(OCRx == 1) OCR1A = FAST;
+			else OCR1B = FAST;
  			break;
  		case 2:
- 			*OCRx = SLOW;
+			if(OCRx == 1) OCR1A = SLOW;
+			else OCR1B = SLOW;
  			break;
  		case 3:
- 			*OCRx = FAST;
+			if(OCRx == 1) OCR1A = FAST;
+			else OCR1B = FAST;
  			break;
- 		default:
- 			*OCRx = STOP;
- 			break;
+		/*default:
+			//*OCRx = STOP;
+			PORTB |= _BV(PB0);
+			break;*/
  	}	
  }
  
  void setMotors(uint8_t arg){
  	uint8_t arg1 = (arg &~ 0xF3) >> 2; //maska till 0000xx00 och lsr två steg (000000xx)
  	uint8_t arg2 = arg &~ 0xFC; //maska till 000000xx
- 	setMotorPair(&OCR1A, PD2, arg1);
- 	setMotorPair(&OCR1B, PD3, arg2);
+ 	setMotorPair(1, PD2, arg1);
+ 	setMotorPair(2, PD3, arg2);
  }
  //----------------------------------------------------------------------
  //----------------------------------------------------------------------
- 
- 
- //---------------------------------Diods---------------------------------
- //-----------------------------------------------------------------------
- /*void init_diodPorts(){
- 	PORTA |= _BV(PA0) | _BV(PA1) | _BV(PA2); //Alla dioder lyser från början
- }
- 
- void decrement_diods(){
- 	PORTA >> 1; 
- }*/
- //------------------------------------------------------------------------
- //------------------------------------------------------------------------
  
  //-----------------------------------SPI---------------------------------
  //-----------------------------------------------------------------------
@@ -251,11 +243,15 @@
  }
  
  void setCmdHL(){
-	 cli();
+	 //cli();
 	 cmdH = command >> 4;
 	 cmdL = command & 0x0F;
-	 sei();
+	 //sei();
  }
+ ISR(SPM_RDY_vect){
+	PORTB |=1;	//Error detection
+ }
+ 
  int main(void)
  {
  	timer_init();
@@ -269,11 +265,36 @@
  	
  	PORTD |= _BV(PD2); //right, 0 backward and 1 forward
  	PORTD |= _BV(PD3); //left, 1 backward and 0 forward
- 	
+	 
+	DDRB |= _BV(PB1);
+	
+// 	while (!(PINB & (1<<PB1)));
+	LED(0);
  	while(1)
  	{
+		 
+		 cli();
+		 if(command == 0x10){ 
+			 PORTB |= _BV(PB0);
+		 }
 		 setCmdHL();
  		if(cmdH == 1){
+			 if(cmdL == 0){ //Stop
+				 LED(0);
+			 }
+			 else if(cmdL == 15){ //Forward
+				 LED(5);
+			 }
+			 else if(cmdL == 5){ //Back
+				 LED(2);
+			 }
+			 else if(cmdL == 7){ //Right
+				 LED(4);
+			 }
+			 else if(cmdL == 13){ //left
+				 LED(7);
+			 }
+				 
  			setMotors(cmdL);
  		}
 		else if(cmdH == 2){
@@ -286,7 +307,9 @@
 			LED(cmdL);
 			
 		}
+		
 		if (cmdH) cmdH = 0;
+		sei();
 		 /*
 		else if(cmdH == 2){
  			if(cmdL == 1){
