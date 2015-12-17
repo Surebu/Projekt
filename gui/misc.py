@@ -9,34 +9,34 @@ from pygame.locals import *
 def no_function(*args):
     print("No function assigned to button or textbox")
 
-## Kommandon
-FORWARDS = b'\x1a'
-LEFT = b'\x16'
-RIGHT = b'\x19'
-BACKWARDS = b'\x15'
-STOP = b'\x10'
-
-CHANGE_CONTROL_MODE = b'\xaa'
-
 ## Adresser till och i roboten och hjälpkonstanter
 SUREBU1_MACADDR = '00:06:66:03:16:FC'
 RETRIEVABLE_DATA = 13
 ADDRESSES = [
     "IR-sensor 1 V",
-    "IR-sensor 2 B",
-    "IR-sensor 3 F",
-    "IR-sensor 4 H",
+    "TargetingM flaggor1",
+    "IR-sensor 2 F",
+    "IR-sensor 3 H",
     "Tejpsensor 1 VF",
-    "Tejpsensor 2 VB",
-    "Tejpsensor 3 HB",
-    "Tejpsensor 4 HF",
+    "TargetingM flaggor3",
+    "TargetingM flaggor2",
+    "Tejpsensor 2 HF",
     "Avståndssensor",
     "Träffdetektor",
     "Tapevalues",
     "Liv",
     "Kontrolläge",
     "Move"
+]
 
+DEBUG_ADDRESSES = [
+    "TargetingM flaggor1",
+    "Tejpsensor 2 VB",
+    "TargetingM flaggor3",
+    "TargetingM flaggor2",
+    "Tapevalues",
+    "Kontrolläge",
+    "Move"
 ]
 
 ## Färger

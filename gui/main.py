@@ -10,8 +10,6 @@ while not gui.done:
     events = pygame.event.get()
     if gui.surebu.rfClient.status is not "CONNECTED":
         gui.btaddr.update(events)
-    elif gui.surebu.data["Kontrolläge"] is 1:
-        gui.surebu.control(events)
     for event in events:
         if event.type == pygame.QUIT:
             gui.done = True

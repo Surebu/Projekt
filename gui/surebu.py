@@ -13,13 +13,13 @@ class Surebu:
     def __init__(self):
         self.data = {
             "IR-sensor 1 V": 0,
-            "IR-sensor 2 B": 0,
-            "IR-sensor 3 F": 0,
-            "IR-sensor 4 H": 0,
+            "TargetingM flaggor1": 0,
+            "IR-sensor 2 F": 0,
+            "IR-sensor 3 H": 0,
             "Tejpsensor 1 VF": 0,
-            "Tejpsensor 2 VB": 0,
-            "Tejpsensor 3 HB": 0,
-            "Tejpsensor 4 HF": 0,
+            "TargetingM flaggor3": 0,
+            "TargetingM flaggor2": 0,
+            "Tejpsensor 2 HF": 0,
             "Avståndssensor": 0,
             "Träffdetektor": 0,
             "Tapevalues":0,
@@ -29,16 +29,6 @@ class Surebu:
         }
         self.dataAddress = 0
         self.rfClient = RFCommClient(SUREBU1_MACADDR, 1)
-
-    def change_control_mode(self):
-        """
-        Byter mellan att roboten ska styras av programmet på datorn eller vara autonom.
-        """
-        self.rfClient.send(CHANGE_CONTROL_MODE)
-        if self.data["Kontrolläge"] is 1:
-            self.data["Kontrolläge"] = 0
-        else:
-            self.data["Kontrolläge"] = 1
 
     def connect_disconnect_button(self):
         """
@@ -68,29 +58,24 @@ class Surebu:
         """
         i = 0
         for address in ADDRESSES:
-            if i < 10:
-                text = FONT.render(address + ": " + str(self.data[address]), 5, BLACK)
-                if i < 4:
-                    screen.blit(text, (dims.widthPadding / 4, dims.heightPadding + 30*i))
-                elif i < 8:
-                    screen.blit(text, (dims.buttonWidth, dims.heightPadding + 30*(i - 4)))
-                elif i is 8:
-                    screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2))
-                elif i is 9:
-                    screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2 + dims.heightPadding))
-            elif i is 10:
-                text = FONT.render(address + ": " + str('{0:04b}'.format(self.data[address]))[::-1],5,BLACK)
-                screen.blit(text,(dims.widthPadding / 4, dims.totalHeight / 2.2 + 2*dims.heightPadding))
-            elif i is 13:
-                text = FONT.render(address + ": " + str(hex(self.data[address])), 5, BLACK)
-                screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2 + 3*dims.heightPadding))
-            elif i is 11:
-                text = FONT.render(address + ": ", 5, BLACK)
-                screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2 + 4*dims.heightPadding))
-                for j in range(self.data[address]):
-                    screen.blit(LIFE, (dims.widthPadding / 4 + j * (LIFE_RECT.width + dims.widthPadding / 4),
-                                       dims.totalHeight / 2.2 + 5*dims.heightPadding))
-            i += 1
+            if address not in DEBUG_ADDRESSES:
+                if i < 7:
+                    text = FONT.render(address + ": " + str(self.data[address]), 5, BLACK)
+                    if i < 3:
+                        screen.blit(text, (dims.widthPadding / 4, dims.heightPadding + 30*i))
+                    elif i < 5:
+                        screen.blit(text, (dims.buttonWidth, dims.heightPadding + 30*(i - 3)))
+                    elif i is 5:
+                        screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2))
+                    elif i is 6:
+                        screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2 + dims.heightPadding))
+                elif i is 7:
+                    text = FONT.render(address + ": ", 5, BLACK)
+                    screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2 + 2*dims.heightPadding))
+                    for j in range(self.data[address]):
+                        screen.blit(LIFE, (dims.widthPadding / 4 + j * (LIFE_RECT.width + dims.widthPadding / 4),
+                                           dims.totalHeight / 2.2 + 3*dims.heightPadding))
+                i += 1
         self.__draw_status(screen, dims)
 
     def __draw_status(self, screen, dims):
@@ -101,34 +86,14 @@ class Surebu:
 
         if self.rfClient.status is "CONNECTED":
             connection_satus = UNDERLINED_FONT.render(self.rfClient.status, 5, GREEN)
-            #if self.data["Kontrolläge"] is 1:
-            #    control_status = UNDERLINED_FONT.render("CONTROL", 5, GREEN)
-            #else:
-            #    control_status = UNDERLINED_FONT.render("AUTONOMOUS", 5, RED)
         else:
             connection_satus = UNDERLINED_FONT.render(self.rfClient.status, 5, RED)
-            #control_status = SMALL_FONT.render("N/a", 5, RED)
 
         screen.blit(status, (dims.rightPanelStart + dims.widthPadding,
                             dims.buttonHeight + dims.heightPadding*2.5))
         screen.blit(connection_satus, (dims.rightPanelStart + 2.2*dims.widthPadding,
                             dims.buttonHeight + dims.heightPadding*2.5))
-        #screen.blit(status, (dims.rightPanelStart + dims.widthPadding,
-        #                    2*dims.buttonHeight + dims.heightPadding*4.5))
-        #screen.blit(control_status, (dims.rightPanelStart + 2.2*dims.widthPadding,
-        #                    2*dims.buttonHeight + dims.heightPadding*4.5))
 
-    def control(self, events):
-        """
-        Går igenom en lista med pygame events och om ett sådant är av rätt knapptryck skickar ett kommando till roboten
-        """
-        for event in events:
-            if event.type is KEYUP:
-                if event.key == K_w: self.rfClient.send(FORWARDS)
-                elif event.key == K_a: self.rfClient.send(LEFT)
-                elif event.key == K_s: self.rfClient.send(BACKWARDS)
-                elif event.key == K_d: self.rfClient.send(RIGHT)
-                elif event.key == K_SPACE: self.rfClient.send(STOP)
 
     def update_data(self):
         """

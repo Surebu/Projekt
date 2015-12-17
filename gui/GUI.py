@@ -33,11 +33,6 @@ class GUI:
         self.buttons.append(Button((self.dims.rightPanelStart + 2 * self.dims.heightPadding, 2 * self.dims.heightPadding),
                                    (self.dims.buttonWidth, self.dims.buttonHeight), "BLUETOOTH CONNECT",
                                    BUTTON_MAIN, BUTTON_RIM, BLACK, Surebu.connect_disconnect_button, self.surebu))
-        """
-        self.buttons.append(Button((self.dims.rightPanelStart + 2 * self.dims.heightPadding, 8 * self.dims.heightPadding),
-                                   (self.dims.buttonWidth, self.dims.buttonHeight), "AUTONOM/CONTROLED",
-                                   BUTTON_MAIN, BUTTON_RIM, BLACK, Surebu.change_control_mode, self.surebu))
-        """
         self.btaddr.value = self.surebu.rfClient.host
 
     def init_background(self):
@@ -78,23 +73,5 @@ class GUI:
             button.draw(self.screen)
         self.surebu.draw(self.screen, self.dims)
         self.btaddr.draw(self.screen)
-"""
-    def run(self):
-        while not self.done:
-            pygame.time.Clock().tick(30)
-            events = pygame.event.get()
-            if self.surebu.rfClient.status is not "CONNECTED":
-                self.btaddr.update(events)
-            elif self.surebu.controlMode is "CONTROL":
-                self.surebu.control(events)
-            for event in events:
-                if event.type == pygame.QUIT:
-                    self.done = True
-                if event.type is MOUSEBUTTONDOWN and event.button is 1:
-                    self.check_buttons(pygame.mouse.get_pos())
-            if self.surebu.rfClient.status is "CONNECTED":
-                self.surebu.update_data()
-            self.paint()
-            pygame.display.flip()
-"""
+
 
