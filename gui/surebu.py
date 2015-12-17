@@ -1,7 +1,7 @@
 from misc import *
 from RFCommClient import *
 
-LIFE = pygame.image.load("life.png")
+LIFE = pygame.image.load("heart60.png")
 LIFE_RECT = LIFE.get_rect()
 
 
@@ -12,21 +12,23 @@ class Surebu:
     """
     def __init__(self):
         self.data = {
-            "IR-sensor 1": 0,
-            "IR-sensor 2": 0,
-            "IR-sensor 3": 0,
-            "IR-sensor 4": 0,
-            "Tejpsensor 1": 0,
-            "Tejpsensor 2": 0,
-            "Tejpsensor 3": 0,
-            "Tejpsensor 4": 0,
+            "IR-sensor 1 V": 0,
+            "IR-sensor 2 B": 0,
+            "IR-sensor 3 F": 0,
+            "IR-sensor 4 H": 0,
+            "Tejpsensor 1 VF": 0,
+            "Tejpsensor 2 VB": 0,
+            "Tejpsensor 3 HB": 0,
+            "Tejpsensor 4 HF": 0,
             "Avståndssensor": 0,
             "Träffdetektor": 0,
+            "Tapevalues":0,
             "Liv": 3,
-            "Kontrolläge":0
+            "Kontrolläge":0,
+            "Move":0
         }
         self.dataAddress = 0
-        self.rfClient = FakeRFCommClient(SUREBU1_MACADDR, 1)
+        self.rfClient = RFCommClient(SUREBU1_MACADDR, 1)
 
     def change_control_mode(self):
         """
@@ -44,10 +46,18 @@ class Surebu:
         även en förfrågan om vilket kontrolläge roboten är i och  väntar sedan på svar.
         """
         if self.rfClient.status == "NOT CONNECTED":
+            tries = 0
             while not self.rfClient.connect():
-                pass
-            self.rfClient.send(ADDRESSES.index("Kontrolläge"))
-            self.data["Kontrolläge"] = self.rfClient.receive()
+                tries += 1
+                if tries is 10:
+                    break
+                else:
+                    pass
+            if self.rfClient.status == "CONNECTED":
+                self.rfClient.send(bytes([ADDRESSES.index("Kontrolläge")]))
+                self.data["Kontrolläge"] = self.rfClient.receive()
+            else:
+                print("Failed to connect to: " + self.rfClient.host)
         else:
             self.rfClient.disconnect()
 
@@ -69,11 +79,17 @@ class Surebu:
                 elif i is 9:
                     screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2 + dims.heightPadding))
             elif i is 10:
-                text = FONT.render(address + ": ", 5, BLACK)
+                text = FONT.render(address + ": " + str('{0:04b}'.format(self.data[address]))[::-1],5,BLACK)
+                screen.blit(text,(dims.widthPadding / 4, dims.totalHeight / 2.2 + 2*dims.heightPadding))
+            elif i is 13:
+                text = FONT.render(address + ": " + str(hex(self.data[address])), 5, BLACK)
                 screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2 + 3*dims.heightPadding))
+            elif i is 11:
+                text = FONT.render(address + ": ", 5, BLACK)
+                screen.blit(text, (dims.widthPadding / 4, dims.totalHeight / 2.2 + 4*dims.heightPadding))
                 for j in range(self.data[address]):
                     screen.blit(LIFE, (dims.widthPadding / 4 + j * (LIFE_RECT.width + dims.widthPadding / 4),
-                                       dims.totalHeight / 2.2 + 4*dims.heightPadding))
+                                       dims.totalHeight / 2.2 + 5*dims.heightPadding))
             i += 1
         self.__draw_status(screen, dims)
 
@@ -85,22 +101,22 @@ class Surebu:
 
         if self.rfClient.status is "CONNECTED":
             connection_satus = UNDERLINED_FONT.render(self.rfClient.status, 5, GREEN)
-            if self.data["Kontrolläge"] is 1:
-                control_status = UNDERLINED_FONT.render("CONTROL", 5, GREEN)
-            else:
-                control_status = UNDERLINED_FONT.render("AUTONOMOUS", 5, RED)
+            #if self.data["Kontrolläge"] is 1:
+            #    control_status = UNDERLINED_FONT.render("CONTROL", 5, GREEN)
+            #else:
+            #    control_status = UNDERLINED_FONT.render("AUTONOMOUS", 5, RED)
         else:
             connection_satus = UNDERLINED_FONT.render(self.rfClient.status, 5, RED)
-            control_status = SMALL_FONT.render("N/a", 5, RED)
+            #control_status = SMALL_FONT.render("N/a", 5, RED)
 
         screen.blit(status, (dims.rightPanelStart + dims.widthPadding,
                             dims.buttonHeight + dims.heightPadding*2.5))
         screen.blit(connection_satus, (dims.rightPanelStart + 2.2*dims.widthPadding,
                             dims.buttonHeight + dims.heightPadding*2.5))
-        screen.blit(status, (dims.rightPanelStart + dims.widthPadding,
-                            2*dims.buttonHeight + dims.heightPadding*4.5))
-        screen.blit(control_status, (dims.rightPanelStart + 2.2*dims.widthPadding,
-                            2*dims.buttonHeight + dims.heightPadding*4.5))
+        #screen.blit(status, (dims.rightPanelStart + dims.widthPadding,
+        #                    2*dims.buttonHeight + dims.heightPadding*4.5))
+        #screen.blit(control_status, (dims.rightPanelStart + 2.2*dims.widthPadding,
+        #                    2*dims.buttonHeight + dims.heightPadding*4.5))
 
     def control(self, events):
         """
@@ -121,8 +137,20 @@ class Surebu:
          roboten måste man kalla på metoden RETRIEVABLE_DATA+1(11 just nu) gånger.
         """
         address = ADDRESSES[self.dataAddress]
-        self.rfClient.send(address)
-        self.data[address] = self.rfClient.receive()
+        self.rfClient.send(bytes([self.dataAddress]))
+        recievedData = self.rfClient.receive()
+        if len(recievedData) is not 0:
+            if address is "Liv":
+                if int(recievedData[0]) is 7:
+                    self.data[address] = 3
+                elif int(recievedData[0]) is 3:
+                    self.data[address] = 2
+                elif int(recievedData[0]) is 1:
+                    self.data[address] = 1
+                else:
+                    self.data[address] = 0
+            else:
+                self.data[address] = int(recievedData[0])
         self.dataAddress += 1
         if self.dataAddress > RETRIEVABLE_DATA:
             self.dataAddress = 0

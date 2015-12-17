@@ -37,10 +37,10 @@ class FakeRFCommClient:
 
 ## RfCommClient är bara ett enklare interface med PyBluez med bara nödvändiga funktioner samt funktioner för att hjälpa
 ## GUI:t
-class RfCommClient:
+class RFCommClient:
     def __init__(self, baddr, port):
         self.host = baddr   #macadressen till målet/hosten
-        self.port = port    #porten, 1 funkar typ
+        self.port = port    #porten, 1 funkar
         self.socket = bluetooth.BluetoothSocket(bluetooth.RFCOMM)   #öppna en socket som sedan kan ansluta till roboten
         self.status = "NOT CONNECTED"
 
@@ -62,17 +62,18 @@ class RfCommClient:
 
     def disconnect(self):
         self.socket.close()
+        self.socket = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
         self.status = "NOT CONNECTED"
 
     # Skickar en byte till hosten(roboten)
     def send(self, data):
-        if self.host is not None:
+        if self.status is "CONNECTED":
             self.socket.send(data)
             print("Sent: " + str(data))
 
     # Tar emot en byte från hosten(roboten)
     def receive(self):
-        if self.host is not None:
+        if self.status is "CONNECTED":
             data = self.socket.recv(1)
             print("Received:  " + str(data))
             return data

@@ -2,15 +2,15 @@ from GUI import *
 
 
 ## Koden körs härifrån, mest för enkelhetens skull.
-gui = GUI([640, 480], "teos test")
+gui = GUI([640, 480], "S.L.A.V.E.")
 gui.blank_icon()
 
 while not gui.done:
-    pygame.time.Clock().tick(30)
+    pygame.time.Clock().tick(200)
     events = pygame.event.get()
     if gui.surebu.rfClient.status is not "CONNECTED":
         gui.btaddr.update(events)
-    elif gui.surebu.data["Kontroll läge"] is 1:
+    elif gui.surebu.data["Kontrolläge"] is 1:
         gui.surebu.control(events)
     for event in events:
         if event.type == pygame.QUIT:

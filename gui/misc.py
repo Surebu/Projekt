@@ -10,40 +10,35 @@ def no_function(*args):
     print("No function assigned to button or textbox")
 
 ## Kommandon
-FORWARDS = b'\xff'
-LEFT = b'\x0f'
-RIGHT = b'\xf0'
-BACKWARDS = b'\xcc'
-STOP = b'\x00'
+FORWARDS = b'\x1a'
+LEFT = b'\x16'
+RIGHT = b'\x19'
+BACKWARDS = b'\x15'
+STOP = b'\x10'
 
 CHANGE_CONTROL_MODE = b'\xaa'
 
 ## Adresser till och i roboten och hjälpkonstanter
 SUREBU1_MACADDR = '00:06:66:03:16:FC'
-RETRIEVABLE_DATA = 11
+RETRIEVABLE_DATA = 13
 ADDRESSES = [
-    "IR-sensor 1",
-    "IR-sensor 2",
-    "IR-sensor 3",
-    "IR-sensor 4",
-    "Tejpsensor 1",
-    "Tejpsensor 2",
-    "Tejpsensor 3",
-    "Tejpsensor 4",
+    "IR-sensor 1 V",
+    "IR-sensor 2 B",
+    "IR-sensor 3 F",
+    "IR-sensor 4 H",
+    "Tejpsensor 1 VF",
+    "Tejpsensor 2 VB",
+    "Tejpsensor 3 HB",
+    "Tejpsensor 4 HF",
     "Avståndssensor",
     "Träffdetektor",
+    "Tapevalues",
     "Liv",
-    "Kontroll läge"
+    "Kontrolläge",
+    "Move"
+
 ]
-# Sensorkommandon
-SENSORS = [
-    b'\x01',    #testsensor 1
-    b'\x02',    #testsensor 2
-    b'\x03',    #testsensor 3
-    b'\x04',    #testsensor 4
-    b'\x05',    #testsensor 5
-    b'\x06',    #testsensor 6
-]
+
 ## Färger
 
 MAIN_BACKGROUND = (246, 166, 170)

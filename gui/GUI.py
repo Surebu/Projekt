@@ -33,11 +33,11 @@ class GUI:
         self.buttons.append(Button((self.dims.rightPanelStart + 2 * self.dims.heightPadding, 2 * self.dims.heightPadding),
                                    (self.dims.buttonWidth, self.dims.buttonHeight), "BLUETOOTH CONNECT",
                                    BUTTON_MAIN, BUTTON_RIM, BLACK, Surebu.connect_disconnect_button, self.surebu))
-
+        """
         self.buttons.append(Button((self.dims.rightPanelStart + 2 * self.dims.heightPadding, 8 * self.dims.heightPadding),
                                    (self.dims.buttonWidth, self.dims.buttonHeight), "AUTONOM/CONTROLED",
                                    BUTTON_MAIN, BUTTON_RIM, BLACK, Surebu.change_control_mode, self.surebu))
-
+        """
         self.btaddr.value = self.surebu.rfClient.host
 
     def init_background(self):
